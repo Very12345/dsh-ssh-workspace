@@ -22,11 +22,11 @@
 - 保留本机沙箱，移除上游全局完全访问与 approval=never 设置。
 - 本机路由不按远端 POSIX 目录猜测；已删除占位目录跨重启拒绝执行。
 - 用可撤销的运行时兼容适配让已维护 Git Bash switch 跳过远程 Agent；保留其本机 enabled 设置，不改动该插件文件。
-- 自己提供设置页、手动添加、SSH config 导入与本机/远端项目选择。React 文本渲染不拼接用户 HTML。
+- 自己提供设置页、手动添加、SSH config 导入；项目目录使用官方 DirectoryBrowser 组件快照，只增加 headerExtra 属性、标题上方插入位置及独立 CSS tag ID。电脑选择收在一行下拉框内，本机系统弹窗仍调用原始 IPC pick。React 文本渲染不拼接用户 HTML。
 
 ## 联调范围
 
-本地测试验证 SSH 参数约束、Host/Include 发现、配置重载、并发选择同一项目、移除后的路由、当前 DSH scoped tools/PTC 呈现、本机策略保留、包中不存在安装构建脚本。UI 测试验证明暗主题、手动添加、两种目录选择、插槽优先级、窄屏与 Esc 关闭。
+本地测试验证 SSH 参数约束、Host/Include 发现、配置重载、并发选择同一项目、移除后的路由、当前 DSH scoped tools/PTC 呈现、本机策略保留、包中不存在安装构建脚本。UI 测试验证明暗主题、手动添加、顶部电脑下拉框、原生 pick、官方双栏目录组件的新建文件夹/隐藏文件、插槽优先级、窄屏与 Esc 关闭。另有快照差异测试约束组件仅改动上述三个位置。
 
 在用户授权的 Linux SSH 测试机器上验证：连接与目录浏览、中文/空格文件名的写入和读取、cwd/rg、超时终止、四种模式的原生工具远程执行、极简持久环境变量、原生打包 ripgrep 经远程 subprocess 运行、主机移除后的拒绝执行、主动关闭专用 SSH tunnel 后重新连接。所有读写在随机命名的专用 `/tmp/dsh-ssh-workspace-*` 测试目录内进行，并在 finally 中清理。
 

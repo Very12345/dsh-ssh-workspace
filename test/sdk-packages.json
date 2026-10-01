@@ -37,5 +37,7 @@
   "@deepseek-ai/dsh-sandbox-local": "0.2.0-rc.2",
   "@deepseek-ai/dsh-tool-fs": "0.2.0-rc.2",
   "@deepseek-ai/dsh-tool-fs-search": "0.2.0-rc.2",
-  "@deepseek-ai/dsh-fs-observation-policy": "0.2.0-rc.2"
+  "@deepseek-ai/dsh-fs-observation-policy": "0.2.0-rc.2",
+  "@deepseek-ai/dsh-client-ui-primitives": "0.2.0-rc.2",
+  "@deepseek-ai/dsh-client-ui-directory-picker-browse": "0.2.0-rc.2"
 }

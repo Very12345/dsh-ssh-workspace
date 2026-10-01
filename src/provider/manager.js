@@ -1387,12 +1387,26 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     const path = posix4.normalize(requestedPath?.trim() || home);
     if (!posix4.isAbsolute(path)) throw new Error("remote directory path must be an absolute POSIX path");
     const listed = await connection.client.resourceList({ uri: fileUriFromPosixPath(path) });
+    const crumbs=[];
+    for(let current=path;;){crumbs.unshift({name:posix4.basename(current)||"/",path:current,hidden:posix4.basename(current).startsWith(".")});if(current==="/")break;current=posix4.dirname(current);}
     return {
       path,
       home,
+      crumbs,
+      truncated: false,
       ...path === "/" ? {} : { parent: posix4.dirname(path) },
-      entries: listed.entries.filter((entry) => entry.type === "directory").sort((left, right) => left.name.localeCompare(right.name)).map((entry) => ({ name: entry.name, path: posix4.join(path, entry.name) }))
+      entries: listed.entries.filter((entry) => entry.type === "directory").sort((left, right) => left.name.localeCompare(right.name)).map((entry) => ({ name: entry.name, path: posix4.join(path, entry.name), hidden:entry.name.startsWith(".") }))
     };
+  }
+  async createRemoteDirectory(server,parent,name) {
+    if(typeof parent!=="string"||!posix4.isAbsolute(parent))throw new Error("Select an absolute remote directory");
+    if(typeof name!=="string"||!name.trim()||name==="."||name===".."||/[\\/\0\r\n]/.test(name))throw new Error("Enter a single folder name");
+    await this.listRemoteDirectory(server,parent);
+    const client=await (await this.hostContext(server)).remote.getClient();
+    const path=posix4.join(parent,name);
+    try {await client.resourceResolve({uri:fileUriFromPosixPath(path),followSymlinks:false});throw new Error("A file or folder with this name already exists");}catch(error){if(error.code!==AhpErrorCodes.NotFound)throw error;}
+    await client.resourceMkdir({uri:fileUriFromPosixPath(path)});
+    return path;
   }
   /** Create a server entry through the settings provider. */
   async addServer(input) {

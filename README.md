@@ -21,10 +21,12 @@ dsh plugin --profile desktop add github:Very12345/dsh-ssh-workspace
 1. 在系统终端确认 `ssh 你的别名` 可以免交互登录，主机密钥已确认；加密密钥需要先加入 `ssh-agent`。
 2. 打开 **设置 → 远程工作区**，从 SSH config 添加电脑，或者手动填写地址、用户名、端口。支持密钥文件路径和跳板机。
 3. 首次连接点击 **初始化环境**。插件从微软官方下载固定版本 VS Code CLI 1.140.0，保存到远端 `~/.dsh-ssh-workspace`，运行 Agent Host；无需安装 VS Code 桌面界面或在远端安装 DSH。下载及运行环境遵循 [Microsoft VS Code Server 条款](https://code.visualstudio.com/docs/remote/vscode-server)。
-4. 新建项目时，选择 **本机电脑** 或一台 SSH 电脑，浏览目录并点击 **使用此目录**。
+4. 新建项目时，在原有目录浏览器顶部的 **电脑** 下拉框中选择 **本机电脑** 或 SSH 电脑，浏览目录并点击 **打开**。本机系统原生选择器保持原样，在电脑选择行点击 **选择文件夹** 后打开。
 5. 远程项目使用 Bash。任意远程命令需要在 DSH 原生权限选择器中选择 **完全访问**，也可以沿用工具层的原生审批流程。插件不会自动修改权限默认值。
 
 SSH config 使用系统 OpenSSH 解释连接选项，包含 `Host`、`Include`、`IdentityFile`、`ProxyJump`。通配符不会作为可选电脑；未找到的别名可手动添加。可以在设置页指定另一份配置文件。插件只读 SSH config，不写回它，不读取私钥内容，不保存密码。
+
+目录浏览器沿用官方 DSH 的双栏布局、面包屑、路径编辑、新建文件夹和隐藏文件开关。插件只在标题上方加一行电脑下拉框；手动添加与初始化电脑在设置页完成。
 
 ## 行为与边界
 
@@ -66,4 +68,4 @@ node test/live-smoke.mjs
 
 ## 许可
 
-本插件的原创代码为 MIT。`src/provider/` 中的传输代码基于 [Yan-Zero/dsh-remote-ssh](https://github.com/Yan-Zero/dsh-remote-ssh) 的 Apache-2.0 源码快照；原始版本、修改范围及许可见 `NOTICE` 和 `PROVIDER-LICENSE`。不分发 Microsoft VS Code 二进制文件。
+本插件的原创代码为 MIT。`src/provider/` 中的传输代码基于 [Yan-Zero/dsh-remote-ssh](https://github.com/Yan-Zero/dsh-remote-ssh) 的 Apache-2.0 源码快照；目录浏览器组件来自 DeepSeek 官方 DSH 0.2.0-rc.2，MIT 许可见 `DIRECTORY-BROWSER-LICENSE`。原始版本、修改范围及许可见 `NOTICE` 和 `PROVIDER-LICENSE`。不分发 Microsoft VS Code 二进制文件。

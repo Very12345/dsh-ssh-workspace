@@ -7,7 +7,7 @@ import {Context} from '@deepseek-ai/cordis';
 import Manager from '../src/provider/manager.js';
 import {manualServer} from '../src/hosts.js';
 import {discoverSshConfigHosts} from '../src/provider/config.js';
-import {createAPI,listLocal} from '../src/index.js';
+import {createAPI,listLocal,validateFolderName} from '../src/index.js';
 import WorkspaceShell from '../src/shell.js';
 import {injectSearchPathHook,remoteAbsolutePath} from '../src/provider/search.js';
 const temp=async t=>{const p=await mkdtemp(join(tmpdir(),'dsh-ssh-test-'));t.after(()=>rm(p,{recursive:true,force:true}));return p;};
@@ -57,4 +57,10 @@ test('package ships prepared JS, licenses, with no install-time scripts or permi
  const pkg=JSON.parse(await readFile(new URL('../package.json',import.meta.url)));for(const name of ['prepare','postinstall','install'])assert.equal(pkg.scripts[name],undefined);
  const patch=await readFile(new URL('../cordis.patch.yml',import.meta.url),'utf8');assert.doesNotMatch(patch,/policy:\s*never|mode:\s*danger-full-access/);assert.doesNotMatch(patch,/id: directory-picker/);
  await import('../src/policy.js');await import('../src/provider/spill.js');await import('../src/provider/subprocess.js');
+});
+
+test('native folder browser adapter supplies breadcrumbs/hidden flags and safe creation',async t=>{
+ const {m,root}=await manager(t),api=createAPI(m);await mkdir(join(root,'.hidden'));const listing=await api.perform({action:'local-list',path:root});assert.ok(listing.crumbs.at(-1).path===root);assert.ok(listing.entries.find(e=>e.name==='.hidden').hidden);
+ const path=await api.perform({action:'local-mkdir',path:root,name:'new folder'});assert.equal(path,join(root,'new folder'));await assert.rejects(api.perform({action:'local-mkdir',path:root,name:'new folder'}),/exist/i);
+ for(const name of ['../escape','a/b','a\\b','.', '..', '', 'x\n'])assert.throws(()=>validateFolderName(name));
 });

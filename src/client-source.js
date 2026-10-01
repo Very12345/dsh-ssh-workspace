@@ -1,7 +1,10 @@
 window.__ModuleLoader__.load({id:'@very12345/dsh-ssh-workspace',factory:require=>{
  const R=require('react'),h=R.createElement;
+ __DIRECTORY_BROWSER__
+ const DirectoryBrowser=createDirectoryBrowser(require);
+ const primitives=require('@deepseek-ai/dsh-client-ui-primitives');
  const STYLE=__SSH_STYLE__;
- const rpc=async input=>{const r=await fetch('/plugins/ssh-workspace',input?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)}:undefined);const data=await r.json();if(!r.ok||!data.ok)throw new Error(data.error||'请求失败');return input?data.value:data;};
+ const rpc=async (input,signal)=>{const r=await fetch('/plugins/ssh-workspace',input?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),signal}:{signal});const data=await r.json();if(!r.ok||!data.ok)throw new Error(data.error||'请求失败');return input?data.value:data;};
  const Icon=()=>h('svg',{width:22,height:22,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.6},h('rect',{x:3,y:4,width:18,height:12,rx:2}),h('path',{d:'M8 20h8M12 16v4M6 8l3 2-3 2M11 12h4'}));
  function useCatalog(){const [data,setData]=R.useState(null),[error,setError]=R.useState('');const reload=R.useCallback(async()=>{try{setData(await rpc());setError('');}catch(e){setError(e.message);}},[]);R.useEffect(()=>{void reload();},[reload]);return {data,error,setError,reload};}
  function HostForm({onDone,onCancel}){const [input,setInput]=R.useState({hostname:'',username:'',port:22,label:'',identityFile:'',proxyJump:''}),[busy,setBusy]=R.useState(false),[error,setError]=R.useState('');const field=(key,label,placeholder)=>h('label',{className:'ssh-field',key},h('span',null,label),h('input',{value:input[key],placeholder,onChange:e=>setInput({...input,[key]:e.target.value}),autoComplete:'off'}));return h('form',{className:'dshp-form',onSubmit:async e=>{e.preventDefault();setBusy(true);try{await rpc({action:'add',...input});await onDone();}catch(e){setError(e.message);}finally{setBusy(false);}}},h('div',{className:'ssh-grid'},field('hostname','主机地址','example.com'),field('username','用户名','远端账户'),field('port','端口','22'),field('label','显示名称','可选'),field('identityFile','密钥文件路径','可选，使用 ssh-agent 或 SSH config'),field('proxyJump','跳板机','可选，SSH config 别名')),h('p',{className:'dshp-help'},'使用系统 OpenSSH；密码和密钥口令由 ssh-agent 管理，不保存在插件中。'),error&&h('div',{role:'alert',className:'dshp-error'},error),h('div',{className:'dshp-actions'},h('button',{className:'dshp-button dshp-primary',disabled:busy,type:'submit'},busy?'保存中…':'添加电脑'),h('button',{className:'dshp-button',type:'button',onClick:onCancel},'取消')));}
@@ -23,31 +26,24 @@ window.__ModuleLoader__.load({id:'@very12345/dsh-ssh-workspace',factory:require=
     h('p',{className:'dshp-footnote'},'初始化从微软下载 VS Code CLI 1.140.0，保存于远端 ~/.dsh-ssh-workspace。'+ 'Linux/macOS 远端使用 Agent Host 运行环境。命令按远端账户权限执行，受限会话需在原生权限选择中启用完全访问。'),
     c.error&&h('div',{className:'dshp-error',role:'alert'},c.error),...(c.data?.errors||[]).map((e,i)=>h('p',{className:'dshp-footnote',key:i},e)));
  }
- function ProjectFlow({open,busy,onPicked,onCancel,onError}){
-  const c=useCatalog(),[host,setHost]=R.useState(null),[listing,setListing]=R.useState(null),[draft,setDraft]=R.useState(''),[working,setWorking]=R.useState(false),[adding,setAdding]=R.useState(false),generation=R.useRef(0);
-  R.useEffect(()=>{if(open){setHost(null);setListing(null);c.setError('');void c.reload();}return()=>{generation.current++;};},[open]);
-  const browse=async(server,path)=>{const token=++generation.current;setHost(server);setListing(null);setWorking(true);c.setError('');try{const result=await rpc({action:server.id==='local'?'local-list':'list',id:server.id,path});if(token===generation.current){setListing(result);setDraft(result.path);}}catch(e){if(token===generation.current)c.setError(e.message);}finally{if(token===generation.current)setWorking(false);}};
-  const promote=async server=>{setWorking(true);try{const saved=await rpc({action:'import',alias:server.sshTarget});await c.reload();await browse(saved);}catch(e){c.setError(e.message);setWorking(false);}};
-  R.useEffect(()=>{if(!open)return;const previous=document.activeElement;const key=e=>{if(e.key==='Escape'&&!busy)onCancel();};document.addEventListener('keydown',key);const timer=setTimeout(()=>document.querySelector('.ssh-dialog button')?.focus(),0);return()=>{clearTimeout(timer);document.removeEventListener('keydown',key);previous?.focus?.();};},[open,busy,onCancel]);
-  if(!open)return null;
-  const saved=(c.data?.servers||[]).map(server=>h('button',{className:'ssh-host','data-selected':host?.id===server.id,key:server.id,onClick:()=>browse(server),disabled:working||busy},server.label));
-  const config=(c.data?.configHosts||[]).filter(server=>!c.data.servers.some(x=>x.id===server.id)).map(server=>h('button',{className:'ssh-host',key:server.id,onClick:()=>promote(server),disabled:working||busy},server.label));
-  const directories=(listing?.entries||[]).map(entry=>h('button',{className:'ssh-directory',key:entry.path,onClick:()=>browse(host,entry.path)},h('span',null,'▱'),entry.name));
-  let content;
-  if(adding)content=h(HostForm,{onDone:async()=>{setAdding(false);await c.reload();},onCancel:()=>setAdding(false)});
-  else if(!host)content=h('div',{className:'ssh-welcome'},h(Icon),h('p',null,'选择一台电脑，浏览其中的项目目录。'));
-  else content=h(R.Fragment,null,
-    h('div',{className:'ssh-path'},h('input',{value:draft,onChange:e=>setDraft(e.target.value),'aria-label':'远程目录',onKeyDown:e=>{if(e.key==='Enter')void browse(host,draft);}}),h('button',{className:'dshp-button',disabled:working,onClick:()=>browse(host,draft)},'前往')),
-    h('div',{className:'dshp-actions'},h('button',{className:'dshp-button',disabled:working,onClick:()=>browse(host,listing?.home)},'主目录'),h('button',{className:'dshp-button',disabled:working||!listing?.parent,onClick:()=>browse(host,listing.parent)},'上一级')),
-    working?h('p',{role:'status',className:'dshp-footnote'},'正在连接远端环境…'):h('div',{className:'ssh-directories'},...directories),
-    h('p',{className:'dshp-footnote'},host.id==='local'?'本机目录。': '首次连接可初始化插件专用 Agent Host 环境；远端命令需要原生完全访问权限。'),
-    host.id!=='local'&&h('button',{className:'dshp-button',disabled:working||busy,onClick:async()=>{setWorking(true);try{await rpc({action:'initialize',id:host.id});await c.reload();await browse(host);}catch(e){c.setError(e.message);setWorking(false);}}},'初始化远端环境'),
-    h('button',{className:'dshp-button dshp-primary',disabled:working||busy||!listing,onClick:async()=>{const token=generation.current;setWorking(true);try{if(host.id==='local')onPicked(listing.path);else {const project=await rpc({action:'project',id:host.id,path:listing.path});if(token===generation.current)onPicked(project.aliasPath);}}catch(e){c.setError(e.message);}finally{setWorking(false);}}},busy?'正在创建项目…':'使用此目录'));
-  return h('div',{className:'ssh-backdrop'},h('style',null,STYLE),h('section',{className:'dshp-page ssh-dialog',role:'dialog','aria-modal':true,'aria-label':'选择项目位置'},
-    h('header',{className:'dshp-header'},h('div',{className:'dshp-title'},h(Icon),h('div',null,h('h2',null,'选择项目位置'),h('p',{className:'dshp-subtitle'},'本机或通过 SSH 连接的电脑'))),h('button',{className:'dshp-button',disabled:busy,onClick:onCancel},'关闭')),
-    h('div',{className:'ssh-picker'},h('aside',{className:'ssh-hosts'},h('button',{className:'ssh-host','data-selected':host?.id==='local',disabled:working||busy,onClick:()=>browse({id:'local',label:'本机电脑'})},'本机电脑'),h('p',{className:'dshp-heading'},'已保存'),...saved,h('p',{className:'dshp-heading'},'SSH config'),...config,h('button',{className:'dshp-button',onClick:()=>setAdding(true)},'+ 添加电脑')),h('main',{className:'ssh-browser'},content)),
-    c.error&&h('div',{className:'dshp-error',role:'alert'},c.error)));
+ const browserCopy={'browser.title':'选择工作区目录','browser.home':'主目录','browser.newFolder':'新建文件夹','browser.folderName':'文件夹名称','browser.createIn':'在"{name}"中新建文件夹','browser.untitledFolder':'未命名文件夹','browser.create':'创建','browser.cancel':'取消','browser.open':'打开','browser.editPath':'编辑路径','browser.loading':'加载中…','browser.truncated':'文件夹过多，仅显示开头部分。','browser.showHidden':'显示隐藏文件'};
+ const translate=(key,params)=>Object.entries(params||{}).reduce((text,[k,v])=>text.replaceAll('{'+k+'}',v),browserCopy[key]||key);
+ function ProjectFlow({open,busy,onPicked,onCancel,onError,pickLocal,nativeLocal}){
+  const c=useCatalog(),[computer,setComputer]=R.useState('local'),[working,setWorking]=R.useState(false),[failure,setFailure]=R.useState(''),generation=R.useRef(0),importing=R.useRef(new Map());
+  R.useEffect(()=>{generation.current++;if(open){setComputer('local');setFailure('');void c.reload();}return()=>{generation.current++;};},[open]);
+  const saved=c.data?.servers||[],aliases=(c.data?.configHosts||[]).filter(s=>!saved.some(x=>x.id===s.id));
+  const resolveServer=R.useCallback(async()=>{
+   const existing=saved.find(s=>s.id===computer);if(existing)return existing;
+   const alias=aliases.find(s=>s.id===computer);if(!alias)throw new Error('所选电脑已移除');
+   let promise=importing.current.get(computer);if(!promise){promise=rpc({action:'import',alias:alias.sshTarget});importing.current.set(computer,promise);promise.catch(()=>importing.current.delete(computer));}return promise;
+  },[computer,c.data]);
+  const listDirectory=R.useCallback(async(path,signal)=>computer==='local'?rpc({action:'local-list',path},signal):rpc({action:'list',id:(await resolveServer()).id,path},signal),[computer,resolveServer]);
+  const createDirectory=R.useCallback(async(path,name)=>computer==='local'?rpc({action:'local-mkdir',path,name}):rpc({action:'mkdir',id:(await resolveServer()).id,path,name}),[computer,resolveServer]);
+  const choose=async path=>{const token=generation.current;setWorking(true);try{const result=computer==='local'?{aliasPath:path}:await rpc({action:'project',id:(await resolveServer()).id,path});if(token===generation.current)onPicked(result.aliasPath);}catch(e){setFailure(e.message);}finally{if(token===generation.current)setWorking(false);}};
+  const selector=h('div',{className:'ssh-computer-bar'},h('style',null,STYLE),h('label',null,'电脑',h('select',{'aria-label':'选择电脑','data-modal-autofocus':true,value:computer,disabled:busy||working,onChange:e=>{generation.current++;setFailure('');setComputer(e.target.value);}},h('option',{value:'local'},'本机电脑'),...saved.map(s=>h('option',{key:s.id,value:s.id},s.label)),...aliases.map(s=>h('option',{key:s.id,value:s.id},s.label+' · SSH config')))),failure&&h('div',{role:'alert',className:'ssh-picker-error'},failure));
+  if(computer==='local'&&nativeLocal)return h(primitives.Modal,{open,onClose:onCancel,title:'选择工作区目录',closeLabel:'取消',className:'ssh-native-choice'},selector,h('div',{className:'ssh-native-actions'},h(primitives.Button,{onClick:onCancel},'取消'),h(primitives.Button,{variant:'primary',disabled:busy||working,onClick:async()=>{const token=generation.current;setWorking(true);try{const path=await pickLocal();if(token!==generation.current)return;if(path===null)onCancel();else onPicked(path);}catch(e){onError(e.message);}finally{if(token===generation.current)setWorking(false);}}},'选择文件夹')));
+  return h(DirectoryBrowser,{key:computer,open,busy:busy||working,listDirectory,createDirectory,onOpen:choose,onClose:onCancel,t:translate,headerExtra:selector});
  }
- function apply(ctx){ctx.slots.inject('settings.section',()=>ctx.slots.register({name:'settings.section',id:'ssh-workspace',label:'远程工作区',order:48},Settings));for(const slot of ['sidebar.workspaces.directoryFlow','conversation.hero.workspace.directoryFlow'])ctx.slots.inject(slot,()=>ctx.slots.register({name:slot,id:'ssh-workspace',priority:-100},ProjectFlow));}
- return {name:'ssh-workspace-client',inject:['slots'],apply};
+ function apply(ctx){ctx.slots.inject('settings.section',()=>ctx.slots.register({name:'settings.section',id:'ssh-workspace',label:'远程工作区',order:48},Settings));for(const slot of ['sidebar.workspaces.directoryFlow','conversation.hero.workspace.directoryFlow'])ctx.slots.inject(slot,()=>ctx.slots.register({name:slot,id:'ssh-workspace',priority:-100,inject:()=>({nativeLocal:globalThis.__DSH_DIRECTORY_PICKER__!==undefined,pickLocal:()=>globalThis.__DSH_DIRECTORY_PICKER__?.pick()??ctx.uiWorkspace.pickDirectory()})},ProjectFlow));}
+ return {name:'ssh-workspace-client',inject:['slots','uiWorkspace'],apply};
 }});

@@ -5,3 +5,8 @@ src/provider. PROVIDER-LICENSE retains the upstream license.
 https://github.com/Yan-Zero/dsh-remote-ssh
 Original host management, connection forms, project selection and integration
 code in this repository are MIT licensed.
+
+The stock DirectoryBrowser component/styles in src/vendor/directory-browser.js
+are from @deepseek-ai/dsh-client-ui-directory-picker-browse 0.2.0-rc.2,
+copyright (c) 2026 DeepSeek, MIT. See DIRECTORY-BROWSER-LICENSE.
+Modifications: headerExtra prop, header insertion and private CSS tag ID.

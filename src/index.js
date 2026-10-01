@@ -1,5 +1,5 @@
 import {posix,resolve,dirname,isAbsolute} from 'node:path';
-import {opendir,stat} from 'node:fs/promises';
+import {opendir,stat,mkdir} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import {manualServer,configServer,effectiveHost} from './hosts.js';
 import {discoverSshConfigHosts,defaultSshConfigFiles} from './provider/config.js';
@@ -18,6 +18,8 @@ export function createAPI(manager){
    const snapshot=manager.snapshot();
    switch(input.action){
     case 'local-list':return listLocal(input.path);
+    case 'local-mkdir':{validateFolderName(input.name);if(typeof input.path!=='string'||!isAbsolute(input.path))throw new Error('Select an absolute local directory');const path=resolve(input.path,input.name);await mkdir(path);return path;}
+    case 'mkdir':{const server=snapshot.servers.find(s=>s.id===input.id);if(!server)throw new Error('Unknown SSH host');validateFolderName(input.name);return manager.createRemoteDirectory(server,input.path,input.name);}
     case 'add':return manager.addServer(manualServer(input));
     case 'import':{const discovery=await discoverSshConfigHosts(snapshot.sshConfigFile?[snapshot.sshConfigFile]:defaultSshConfigFiles());const host=discovery.hosts.find(h=>h.sshTarget===input.alias);if(!host)throw new Error('SSH alias not discovered');await effectiveHost(host.sshTarget,snapshot.sshConfigFile,signal);const existing=snapshot.servers.find(s=>s.id===host.id);return existing||manager.addServer(configServer(host));}
     case 'config':await manager.setSshConfigFile(input.path||undefined);return true;
@@ -48,8 +50,11 @@ export async function listLocal(input){
  for await(const entry of directory){
   if(!entry.isDirectory()&&!(entry.isSymbolicLink()&&(await stat(resolve(path,entry.name)).catch(()=>null))?.isDirectory()))continue;
   if(entries.length===1000){truncated=true;break;}
-  entries.push({name:entry.name,path:resolve(path,entry.name)});
+  entries.push({name:entry.name,path:resolve(path,entry.name),hidden:entry.name.startsWith('.')});
  }
  entries.sort((a,b)=>a.name.localeCompare(b.name));
- return {path,home:homedir(),parent:dirname(path)!==path?dirname(path):undefined,entries,truncated};
+ const crumbs=[];for(let current=path;;){const parent=dirname(current);crumbs.unshift({name:parent===current?current:current.slice(parent.length).replace(/^[\\/]/,''),path:current,hidden:false});if(parent===current)break;current=parent;}
+ return {path,home:homedir(),parent:dirname(path)!==path?dirname(path):undefined,crumbs,entries,truncated};
 }
+
+export function validateFolderName(name){if(typeof name!=='string'||!name.trim()||name==='.'||name==='..'||/[\\/\0\r\n]/.test(name))throw new Error('Enter a single folder name');}
