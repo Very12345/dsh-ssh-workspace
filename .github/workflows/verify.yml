@@ -1,0 +1,19 @@
+name: Verify
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run setup-sdk
+      - run: npm test
+      - run: npm run build:client
+      - run: git diff --exit-code -- src/client.js
+      - run: npx playwright install --with-deps chromium
+      - run: npm run smoke:ui
+      - run: npm pack --dry-run

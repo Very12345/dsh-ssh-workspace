@@ -1,0 +1,7 @@
+This plugin includes a maintained compiled snapshot of dsh-remote-ssh 0.2.4
+by Yan-Zero (Apache-2.0), commit 21d727cbe24fbae283196e5101adb3de2bdd9157.
+Its filesystem, subprocess, AHP transport and routing components reside in
+src/provider. PROVIDER-LICENSE retains the upstream license.
+https://github.com/Yan-Zero/dsh-remote-ssh
+Original host management, connection forms, project selection and integration
+code in this repository are MIT licensed.

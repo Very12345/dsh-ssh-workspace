@@ -1,0 +1,166 @@
+{
+  "name": "@very12345/dsh-ssh-workspace",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "SSH host management and remote project selection for DeepSeek Harness",
+  "license": "MIT",
+  "author": "Very12345",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Very12345/dsh-ssh-workspace.git"
+  },
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./src/client.js",
+    "./bridge": "./src/bridge.js",
+    "./shell": "./src/shell.js",
+    "./provider/*": "./src/provider/*.js",
+    "./package.json": "./package.json",
+    "./policy": "./src/policy.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "files": [
+    "src",
+    "docs",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "PROVIDER-LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=22.15"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "verify": "npm test && npm run build:client && npm run smoke:ui",
+    "setup-sdk": "node test/install-sdk.js",
+    "build:client": "node scripts/build-client.mjs",
+    "smoke:ui": "node test/ui-smoke.mjs"
+  },
+  "dependencies": {
+    "@microsoft/agent-host-protocol": "0.9.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/schemastery": "^3.18.4",
+    "@deepseek-ai/dsh-agent": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-fs": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-fs-sandbox": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-shell": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-spill": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-spill-local": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-subprocess": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-subprocess-local": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-bash-sandbox": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-pwsh-sandbox": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-tool-bash": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-scope": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-sandbox-policy": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-workspace": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-shell-env": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-terminal": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-terminal-bash": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-tool-bash-persistent": "^0.2.0-rc.2",
+    "@deepseek-ai/dsh-agent-preset-registry": "^0.2.0-rc.2"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-fs": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-fs-sandbox": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-shell": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-spill": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-spill-local": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-subprocess": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-subprocess-local": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-bash-sandbox": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-pwsh-sandbox": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tool-bash": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-system-prompt": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-scope": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-sandbox-policy": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-workspace": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-settings": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-shell-env": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-terminal": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-terminal-bash": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tool-bash-persistent": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent-preset-registry": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "remote-workspace",
+    "ssh"
+  ],
+  "homepage": "https://github.com/Very12345/dsh-ssh-workspace#readme",
+  "bugs": {
+    "url": "https://github.com/Very12345/dsh-ssh-workspace/issues"
+  }
+}
