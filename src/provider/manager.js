@@ -62,7 +62,7 @@ function buildRemoteAgentHostCommand(remoteCodeCommand) {
   const requested = quotePosix(remoteCodeCommand);
   return [
     `dsh_code=${requested}`,
-    'if [ "$dsh_code" = code ] && ! command -v "$dsh_code" >/dev/null 2>&1 && [ -x "$HOME/.dsh-ssh-workspace/cli/bin/code" ]; then dsh_code="$HOME/.dsh-ssh-workspace/cli/bin/code"; fi',
+    'if [ "$dsh_code" = code ] && ! command -v "$dsh_code" >/dev/null 2>&1 && [ -x "$HOME/.dsh-ssh-workspace/cli/code" ]; then dsh_code="$HOME/.dsh-ssh-workspace/cli/code"; fi',
     `if ! command -v "$dsh_code" >/dev/null 2>&1; then printf 'dsh-remote-ssh: VS Code CLI not found: %s\\n' "$dsh_code" >&2; exit 127; fi`,
     'exec "$dsh_code" agent host --host 127.0.0.1 --port 0 --idle-timeout 60 --server-data-dir "$HOME/.dsh-ssh-workspace/server" --cli-data-dir "$HOME/.dsh-ssh-workspace/cli" --verbose'
   ].join("\n");
