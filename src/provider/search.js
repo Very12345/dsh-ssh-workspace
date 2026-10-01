@@ -4,6 +4,8 @@
 // .tmp/provider/src/transport/search.ts
 import { registerHooks } from "node:module";
 import { posix } from "node:path";
+var INSTRUCTIONS_PACKAGE = "@deepseek-ai/dsh-agent-instructions";
+var ROOT_SYMBOL = Symbol.for("dsh-ssh-workspace.instruction-root");
 var SEARCH_PACKAGE = "@deepseek-ai/dsh-tool-fs-search";
 var HOOK_SYMBOL_NAME = "dsh-remote-ssh.search-path-parser";
 var HOOK_SYMBOL = Symbol.for(HOOK_SYMBOL_NAME);
@@ -18,20 +20,26 @@ function apply(ctx) {
   const previous = target[HOOK_SYMBOL];
   const hook = (path, workdir) => remoteAbsolutePath(ctx.remoteSshManager, path, workdir);
   target[HOOK_SYMBOL] = hook;
+  const previousRoot=target[ROOT_SYMBOL];
+  const rootHook=cwd=>remoteInstructionRoot(ctx.remoteSshManager,cwd);
+  target[ROOT_SYMBOL]=rootHook;
   const moduleHooks = registerHooks({
     load(url, context, nextLoad) {
       const loaded = nextLoad(url, context);
-      if (!isSearchParserModule(url) || loaded.source === void 0) return loaded;
+      if (loaded.source === void 0) return loaded;
+      if (isInstructionsModule(url)) return {...loaded,source:injectInstructionRootHook(sourceText(loaded.source))};
+      if (!isSearchParserModule(url)) return loaded;
       return { ...loaded, source: injectSearchPathHook(sourceText(loaded.source)) };
     }
   });
   for (const url of ctx.loader.internal?.loadCache.keys() ?? []) {
-    if (!isSearchPackageModule(url)) continue;
+    if (!isSearchPackageModule(url) && !isInstructionsModule(url)) continue;
     ctx.loader.internal?.loadCache.delete(url);
   }
   ctx.provide("remoteSshSearchHook", {});
   ctx.effect(() => () => {
     moduleHooks.deregister();
+    if (target[ROOT_SYMBOL] === rootHook) {if(previousRoot===undefined)delete target[ROOT_SYMBOL];else target[ROOT_SYMBOL]=previousRoot;}
     if (target[HOOK_SYMBOL] !== hook) return;
     if (previous === void 0) delete target[HOOK_SYMBOL];
     else target[HOOK_SYMBOL] = previous;
@@ -68,12 +76,31 @@ function isSearchPackageModule(url) {
   const decoded = normalizedModuleUrl(url);
   return decoded.includes(`/${SEARCH_PACKAGE}/`) || decoded.includes("/packages/fs/tool-fs-search/");
 }
+
+function isInstructionsModule(url){
+ const decoded=normalizedModuleUrl(url);
+ return decoded.endsWith(`/${INSTRUCTIONS_PACKAGE}/lib/index.js`) || decoded.endsWith("/packages/context/agent-instructions/lib/index.js") || decoded.endsWith("/packages/context/agent-instructions/src/discovery.ts");
+}
+function remoteInstructionRoot(manager,cwd){
+ const route=manager.route(undefined,cwd);
+ return route.kind==="remote" ? cwd : undefined;
+}
+function injectInstructionRootHook(source){
+ const symbol="dsh-ssh-workspace.instruction-root";
+ if(source.includes(symbol))return source;
+ const start=/async function findProjectRoot\(cwd,\s*markers,\s*fileSystem,\s*signal\)\s*\{/;
+ if(!start.test(source))throw new Error("DSH instruction root discovery signature changed");
+ return source.replace(start,match=>match+`\n const remoteRoot=globalThis[Symbol.for("${symbol}")]?.(cwd);\n if(remoteRoot!==undefined)return remoteRoot;`);
+}
+
 var search_default = apply;
 export {
   apply,
   search_default as default,
   inject,
   injectSearchPathHook,
+  injectInstructionRootHook,
+  remoteInstructionRoot,
   name,
   remoteAbsolutePath
 };

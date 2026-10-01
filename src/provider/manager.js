@@ -1282,6 +1282,7 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     sshConfigFile: z4.string(),
     servers: z4.array(serverSchema).default([]),
     workspaces: z4.array(workspaceSchema).default([]),
+    retiredAliases: z4.array(z4.string()).default([]),
     openFileMode: z4.union(["auto", "vscode", "cursor", "windsurf", "vscodium", "custom", "download"]).default("auto"),
     openFileEditorPath: z4.string(),
     openFileDownloadMaxBytes: z4.number().default(64 * 1024 * 1024),
@@ -1589,6 +1590,7 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
   async publish(config) {
     this.validate(config);
     await mkdir(resolve2(tmpdir(), "dsh-ssh"), { recursive: true });
+    for (const alias of config.retiredAliases ?? []) this.remoteAliases.add(normalizeLocal(resolve2(alias)));
     const servers = new Map(config.servers.map((server) => [server.id, server]));
     const nextRoutes = /* @__PURE__ */ new Map();
     const nextById = /* @__PURE__ */ new Map();
@@ -1680,7 +1682,12 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
   }
   wasRemoteAlias(path) {
     const absolute = normalizeLocal(resolve2(path));
-    return isContained(normalizeLocal(this.entry.aliasRoot), absolute) || [...this.remoteAliases].some((alias) => isContained(alias, absolute));
+    if ([...this.remoteAliases].some((alias) => isContained(alias, absolute))) return true;
+    const root = normalizeLocal(resolve2(this.entry.aliasRoot));
+    if (!isContained(root, absolute)) return false;
+    const first = relative2(root, absolute).split(sep2)[0];
+    // Reserve generated workspace IDs, not administrative files such as projects/.git.
+    return /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(first);
   }
   async createWorkspaceContext(route) {
     const host = await this.hostContext(route.server);
@@ -1764,6 +1771,8 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     await closeControlMaster(host.transport, host.server.sshTarget);
   }
   async replaceSettings(next) {
+    const active = new Set(next.workspaces.map(w => normalizeLocal(resolve2(w.aliasPath ?? resolve2(next.aliasRoot,w.id)))));
+    next.retiredAliases = [...new Set([...(next.retiredAliases ?? []), ...[...this.remoteAliases].filter(alias => !active.has(alias))])];
     this.validate(next);
     const file = resolve2(this.entry.aliasRoot, "..", "catalog.json");
     const temp = file + "." + randomUUID3() + ".tmp";
@@ -1780,6 +1789,7 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     if (!Number.isSafeInteger(config.openFileDownloadMaxBytes) || config.openFileDownloadMaxBytes <= 0) throw new Error("dsh-remote-ssh: openFileDownloadMaxBytes must be a positive integer");
     if (!Number.isSafeInteger(config.startupTimeoutMs) || config.startupTimeoutMs <= 0) throw new Error("dsh-remote-ssh: startupTimeoutMs must be a positive integer");
     if (!Number.isSafeInteger(config.requestTimeoutMs) || config.requestTimeoutMs <= 0) throw new Error("dsh-remote-ssh: requestTimeoutMs must be a positive integer");
+    for (const alias of config.retiredAliases ?? []) if (typeof alias !== "string" || !isAbsolute2(alias)) throw new Error("Retired workspace alias must be an absolute local path");
     const serverIds = /* @__PURE__ */ new Set();
     for (const server of config.servers) {
       if (!ID_PATTERN.test(server.id) || serverIds.has(server.id)) throw new Error(`dsh-remote-ssh: invalid or duplicate server id '${server.id}'`);

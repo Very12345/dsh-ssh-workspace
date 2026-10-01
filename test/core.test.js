@@ -64,3 +64,13 @@ test('native folder browser adapter supplies breadcrumbs/hidden flags and safe c
  const path=await api.perform({action:'local-mkdir',path:root,name:'new folder'});assert.equal(path,join(root,'new folder'));await assert.rejects(api.perform({action:'local-mkdir',path:root,name:'new folder'}),/exist/i);
  for(const name of ['../escape','a/b','a\\b','.', '..', '', 'x\n'])assert.throws(()=>validateFolderName(name));
 });
+
+test('parent .git probes are not deleted workspace aliases; workspace IDs remain reserved',async t=>{
+ const {m,root}=await manager(t);await m.addServer(server);const route=await m.addWorkspace('test','/remote/project');
+ assert.equal(m.wasRemoteAlias(join(root,'projects','.git')),false);assert.equal(m.route(join(root,'projects','.git')).kind,'local');assert.equal(m.wasRemoteAlias(join(root,'projects')),false);
+ assert.equal(m.route(join(route.aliasPath,'.git')).kind,'remote');await m.removeServer('test');assert.throws(()=>m.route(join(route.aliasPath,'.git')),/no longer configured/);assert.throws(()=>m.route(join(root,'projects','00000000-0000-0000-0000-000000000001','file')),/no longer configured/);
+});
+test('removed custom aliases retain durable tombstones after restart',async t=>{
+ const root=await temp(t),alias=join(root,'custom-alias'),ctx=new Context();await ctx.plugin(Manager,{aliasRoot:join(root,'projects'),servers:[server],workspaces:[{id:'named-workspace',serverId:'test',remotePath:'/remote/project',aliasPath:alias}]});t.after(()=>ctx.fiber.dispose());await ctx.remoteSshManager.removeServer('test');
+ const restarted=new Context();await restarted.plugin(Manager,{aliasRoot:join(root,'projects')});t.after(()=>restarted.fiber.dispose());assert.throws(()=>restarted.remoteSshManager.route(join(alias,'.git')),/no longer configured/);
+});
