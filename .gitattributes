@@ -1,1 +1,2 @@
 * text=auto eol=lf
+src/assets/*/landlock-run -text

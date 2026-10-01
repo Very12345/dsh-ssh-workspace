@@ -22,7 +22,7 @@ dsh plugin --profile desktop add github:Very12345/dsh-ssh-workspace
 2. 打开 **设置 → 远程工作区**，从 SSH config 添加电脑，或者手动填写地址、用户名、端口。支持密钥文件路径和跳板机。
 3. 首次连接点击 **初始化环境**。插件从微软官方下载固定版本 VS Code CLI 1.140.0，保存到远端 `~/.dsh-ssh-workspace`，运行 Agent Host；无需安装 VS Code 桌面界面或在远端安装 DSH。下载及运行环境遵循 [Microsoft VS Code Server 条款](https://code.visualstudio.com/docs/remote/vscode-server)。
 4. 新建项目时，在原有目录浏览器顶部的 **电脑** 下拉框中选择 **本机电脑** 或 SSH 电脑，浏览目录并点击 **打开**。本机系统原生选择器保持原样，在电脑选择行点击 **选择文件夹** 后打开。
-5. 远程项目使用 Bash。任意远程命令需要在 DSH 原生权限选择器中选择 **完全访问**，也可以沿用工具层的原生审批流程。插件不会自动修改权限默认值。
+5. 远程项目使用 Bash，并沿用 DSH 原生的 **只读 / 工作区内修改 / 完全访问** 会话权限。无需为普通项目操作切换到完全访问；超出权限的操作仍使用工具层原生审批，单次批准不修改会话默认值。标准/创造/PTC 使用原生 Bash 提权参数；极简沿用官方持久终端的会话权限切换机制。
 
 SSH config 使用系统 OpenSSH 解释连接选项，包含 `Host`、`Include`、`IdentityFile`、`ProxyJump`。通配符不会作为可选电脑；未找到的别名可手动添加。可以在设置页指定另一份配置文件。插件只读 SSH config，不写回它，不读取私钥内容，不保存密码。
 
@@ -33,7 +33,8 @@ SSH config 使用系统 OpenSSH 解释连接选项，包含 `Host`、`Include`�
 - 标准、创造/cordis、PTC 和极简模式均提供远程 Bash；PTC 保持 `run_code` 工具呈现方式，极简模式保留持久 Shell 状态。
 - 文件读写和原生 `glob` / `grep` 在远端执行。远端需要 Bash、`curl`、`tar` 和 `rg`；Linux x64/arm64、macOS Intel/Apple Silicon 是初始化支持的架构。
 - 本机项目继续调用 DSH 原有沙箱执行器。只给远程会话安装工具覆盖，其他工具、原生审批及本机目录选择保留。
-- 远程文件写入遵守会话的只读/工作区路径策略；远程任意命令不能由本机 OS 沙箱隔离。因此完全访问按远端登录账户权限执行，建议使用合适权限的 SSH 账户。
+- 远程文件与 Bash/持久终端执行同一会话策略。只读禁止写入；工作区内修改允许项目目录和远端临时目录；完全访问按 SSH 账户权限执行。会话切换及单次原生审批的范围保持不变。
+- Linux 在远端探测 Bubblewrap，不可用时使用随包提供、经过摘要校验的 DeepSeek 官方 Landlock runner 0.1.2；macOS 使用 Seatbelt。runner 上传到远端插件缓存，不需 sudo 或修改系统安全设置。沙箱不可用时受限命令会明确报错，不会自动升级权限。旧内核的部分隔离状态沿用官方探测结果，并通过命令结果报告。
 - 远程项目的 AGENTS.md / CLAUDE.md 规则发现以所选远端项目目录为边界，不沿本机占位目录向上查找项目根；本机项目继续使用原有发现规则。
 - 每个远程项目对应一个本机占位目录。它用于 DSH 工作区身份和会话记录，不会把远程文件同步到本机。项目显示名称包含电脑名称。
 - 移除电脑会停止其连接并撤销工作区执行路由，保留 DSH 项目/会话历史与占位目录；以后访问这些项目会明确报错，不会转为本机执行。
@@ -69,4 +70,4 @@ node test/live-smoke.mjs
 
 ## 许可
 
-本插件的原创代码为 MIT。`src/provider/` 中的传输代码基于 [Yan-Zero/dsh-remote-ssh](https://github.com/Yan-Zero/dsh-remote-ssh) 的 Apache-2.0 源码快照；目录浏览器组件来自 DeepSeek 官方 DSH 0.2.0-rc.2，MIT 许可见 `DIRECTORY-BROWSER-LICENSE`。原始版本、修改范围及许可见 `NOTICE` 和 `PROVIDER-LICENSE`。不分发 Microsoft VS Code 二进制文件。
+本插件的原创代码为 MIT。`src/provider/` 中的传输代码基于 [Yan-Zero/dsh-remote-ssh](https://github.com/Yan-Zero/dsh-remote-ssh) 的 Apache-2.0 源码快照；目录浏览器组件来自 DeepSeek 官方 DSH 0.2.0-rc.2，MIT 许可见 `DIRECTORY-BROWSER-LICENSE`。原始版本、修改范围及许可见 `NOTICE` 和 `PROVIDER-LICENSE`。Linux Landlock 预编译 runner 的许可见 `LANDLOCK-LICENSE`，配套审计源码许可见 `LANDLOCK-SOURCE-LICENSE`。不分发 Microsoft VS Code 二进制文件。

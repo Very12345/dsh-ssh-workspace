@@ -34,3 +34,11 @@
 macOS 已提供平台初始化分支，尚未进行真实 macOS SSH 联调。实际 Agent 的模型自主规划、所有第三方插件组合与网络中断时远端子孙进程的完全清理不由这些测试证明。
 
 0.1.2 回归验证包含：父目录 `.git` 探测、UUID 保留、自定义别名移除后重启、官方 SDK 规则加载、本机祖先规则发现及桌面宿主 SDK 对已选真实 SSH 项目的规则启动。
+
+## 0.1.3 远端权限执行
+
+远程命令不再硬性要求完全访问。每次调用保留原生 SandboxPolicy.resolve 的模式、工作区和单次批准，映射到远端 canonical 目录后执行。Linux 沿用官方的 Bubblewrap → Landlock 选择顺序；macOS 用 Seatbelt。Landlock runner 来自 @deepseek-ai/node-addon-system-linux-{x64,arm64} 0.1.2 的发布包，完整 SHA-256 在 remote-sandbox.js 与资产测试中固定。上传与执行探测属于插件控制流程，运行时不编译源码、不修改用户命令、不调用 sudo。
+
+读取/写入策略与官方一致：只读不给持久写路径；工作区内修改允许项目和平台临时目录；完全访问保留账户权限。文件写工具与命令共享 canonical writable roots。极简持久终端使用远端 sandbox provider，原生 mode fence 在会话权限切换时重建 PTY。批准后的单次执行使用批准模式，不覆盖会话的 standing mode。沙箱拒绝与 runner 故障分别按原生 result.sandbox.denied / runnerFailed 报告；部分隔离状态如实保留。
+
+在真实 Linux SSH 主机上验证了只读读取、项目写入、只读拒写、项目外拒写、显式完全访问、四种模式的 workspace-write 及极简持久变量。该主机的 Bubblewrap 因 UID map 权限不可用，Landlock 探测为 partial；实测文件内容写限制有效。macOS 实机与旧 ABI 未覆盖的文件效果仍不由此测试证明。

@@ -963,7 +963,7 @@ return DirectoryBrowser;
     h('section',{className:'dshp-section'},h('h3',{className:'dshp-heading'},'SSH config'),h('div',{className:'dshp-panel'},
       h('div',{className:'dshp-row'},h('label',{className:'ssh-field ssh-grow'},h('span',null,'配置文件'),h('input',{value:config,placeholder:'留空使用 ~/.ssh/config',onChange:e=>setConfig(e.target.value)})),h('button',{className:'dshp-button',disabled:busy,onClick:()=>operate({action:'config',path:config})},'应用')),
       h('div',{className:'ssh-config-list'},...aliases)),h('p',{className:'dshp-footnote'},'沿用 OpenSSH 的 Host、Include、IdentityFile 和 ProxyJump 配置。主机密钥必须先在系统 SSH 中信任。')),
-    h('p',{className:'dshp-footnote'},'初始化从微软下载 VS Code CLI 1.140.0，保存于远端 ~/.dsh-ssh-workspace。'+ 'Linux/macOS 远端使用 Agent Host 运行环境。命令按远端账户权限执行，受限会话需在原生权限选择中启用完全访问。'),
+    h('p',{className:'dshp-footnote'},'初始化从微软下载 VS Code CLI 1.140.0，保存于远端 ~/.dsh-ssh-workspace。'+ 'Linux/macOS 远端使用 Agent Host 运行环境。沿用会话的只读、工作区内修改和完全访问选择，由远端沙箱执行相应限制。'),
     c.error&&h('div',{className:'dshp-error',role:'alert'},c.error),...(c.data?.errors||[]).map((e,i)=>h('p',{className:'dshp-footnote',key:i},e)));
  }
  const browserCopy={'browser.title':'选择工作区目录','browser.home':'主目录','browser.newFolder':'新建文件夹','browser.folderName':'文件夹名称','browser.createIn':'在"{name}"中新建文件夹','browser.untitledFolder':'未命名文件夹','browser.create':'创建','browser.cancel':'取消','browser.open':'打开','browser.editPath':'编辑路径','browser.loading':'加载中…','browser.truncated':'文件夹过多，仅显示开头部分。','browser.showHidden':'显示隐藏文件'};

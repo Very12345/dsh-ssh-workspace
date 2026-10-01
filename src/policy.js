@@ -1,3 +1,4 @@
+import {wrapRemoteArgv} from './remote-sandbox.js';
 import {guardLocalGitBash} from './compat.js';
 import * as bashTool from '@deepseek-ai/dsh-tool-bash';
 import * as persistentBashTool from '@deepseek-ai/dsh-tool-bash-persistent';
@@ -19,11 +20,12 @@ export function apply(ctx){
   const record={children:[],registration:null,restriction:null};records.set(agent,record);
   const capture={register(definition){record.definition=definition;return()=>{record.definition=null;}}};
   record.group=agent.ctx.plugin({name:'ssh-workspace-agent-shell',apply(parent){
-   let child=parent.isolate('tools').isolate('shell');
+   let child=parent.isolate('tools').isolate('shell').isolate('sandbox');
    const minimal=ctx.agentPresets.composedPreset(agent.ctx)==='minimal';
    if(minimal)child=child.isolate('terminals');
    record.children.push(child.plugin({name:'ssh-workspace-agent-capabilities',apply(inner){
     inner.provide('tools',capture);
+    inner.provide('sandbox',{async confine(argv,callPolicy,signal){signal?.throwIfAborted();const current=manager.workspace(route.workspace.id),host=await manager.hostContext(current.server);const plan=await wrapRemoteArgv(host.remote,current.mapper,callPolicy,argv);signal?.throwIfAborted();return plan;}});
     inner.provide('shell',{
      get sandboxMode(){return policy.defaultMode;},
      resolve(request){return {...original.resolve(request),onExpiry:request.onExpiry??'kill',sandboxPolicy:request.sandboxPolicy??policy.resolve({session:agent.session})};},
@@ -42,7 +44,7 @@ export function apply(ctx){
    const scope=scopeOf(agent.ctx);
    record.prompt=agent.ctx.on('system-prompt/assemble',(assembly,context)=>context.scope!==scope?assembly:{...assembly,sections:assembly.sections.filter(s=>s.name!=='tool:pwsh')});
    record.cwdPrompt=agent.ctx.get('systemPrompt').variable('cwd',()=>route.workspace.remotePath);
-   record.worldPrompt=agent.ctx.get('systemPrompt').section({name:'ssh-workspace:execution-world',order:-10,text:'This project is on a remote Linux/macOS computer. Files and Bash commands operate there using POSIX paths. Local desktop/browser tools still operate on the harness host. Arbitrary remote commands require the session’s native Full Access permission. Never fall back to local shell commands after an SSH error.'});
+   record.worldPrompt=agent.ctx.get('systemPrompt').section({name:'ssh-workspace:execution-world',order:-10,text:'This project is on a remote Linux/macOS computer. Files and Bash commands operate there using POSIX paths. Local desktop/browser tools still operate on the harness host. The session’s native read-only/workspace-write/Full Access policy applies on the remote computer; wider permissions require the usual native approval. Never fall back to local shell commands after an SSH error.'});
   }catch(error){records.delete(agent);await record.group.dispose();manager.unbindSession(String(agent.session.header.id),agent);throw error;}
  };
  const dispose=async agent=>{const record=records.get(agent);records.delete(agent);if(record){record.registration?.();record.restriction?.();record.prompt?.();record.cwdPrompt?.();record.worldPrompt?.();await record.group.dispose();}manager.unbindSession(String(agent.session.header.id),agent);};

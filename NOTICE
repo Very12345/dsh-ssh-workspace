@@ -10,3 +10,9 @@ The stock DirectoryBrowser component/styles in src/vendor/directory-browser.js
 are from @deepseek-ai/dsh-client-ui-directory-picker-browse 0.2.0-rc.2,
 copyright (c) 2026 DeepSeek, MIT. See DIRECTORY-BROWSER-LICENSE.
 Modifications: headerExtra prop, header insertion and private CSS tag ID.
+
+Linux Landlock executables are unmodified prebuilt artifacts from
+@deepseek-ai/node-addon-system-linux-x64 / -linux-arm64 0.1.2 (BSD-3-Clause).
+See LANDLOCK-LICENSE. The accompanying unmodified audit source is copied
+from @deepseek-ai/node-addon-system 0.1.2; its supplied license is retained
+in LANDLOCK-SOURCE-LICENSE. No package build/install scripts are executed.

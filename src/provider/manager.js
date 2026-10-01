@@ -1,6 +1,8 @@
 // Derived from Yan-Zero/dsh-remote-ssh 21d727cbe24fbae283196e5101adb3de2bdd9157 (Apache-2.0).
 // See PROVIDER-LICENSE and NOTICE. Maintained snapshot for DSH SSH Workspace.
 
+import {wrapRemoteArgv, sandboxOutcome, remoteWritableRoots, clearRemoteSandbox} from '../remote-sandbox.js';
+
 // .tmp/provider/src/routing/manager.ts
 import { createHash, randomUUID as randomUUID3 } from "node:crypto";
 import { spawn as spawn2 } from "node:child_process";
@@ -160,6 +162,7 @@ var RemoteSshRuntime = class extends Service {
     });
     ctx.effect(() => async () => {
       this.disposed = true;
+      clearRemoteSandbox(this);
       try {
         const connection = await this.ready;
         await connection.client.resourceDelete({uri:fileUriFromPosixPath(this.runtimeRoot),recursive:true}).catch(()=>{});
@@ -647,7 +650,7 @@ var RemoteSshFileSystem = class extends FileSystem {
     }
   }
   async writeText(target, content, expected, signal, sandboxPolicy) {
-    assertMutationAllowed(this.mapper, target, sandboxPolicy);
+    await assertMutationAllowed(this.remote, this.mapper, target, sandboxPolicy);
     return this.withLock(String(target.targetKey), async () => {
       throwIfAborted(signal, "write");
       const existing = await this.probe(target, true);
@@ -697,7 +700,7 @@ var RemoteSshFileSystem = class extends FileSystem {
     });
   }
   async writeBytes(target, content, expected, signal, sandboxPolicy) {
-    assertMutationAllowed(this.mapper, target, sandboxPolicy);
+    await assertMutationAllowed(this.remote, this.mapper, target, sandboxPolicy);
     return this.withLock(String(target.targetKey), async () => {
       throwIfAborted(signal, "write");
       const existing = await this.probe(target, true);
@@ -738,7 +741,7 @@ var RemoteSshFileSystem = class extends FileSystem {
     });
   }
   async editText(target, edit, expected, signal, sandboxPolicy) {
-    assertMutationAllowed(this.mapper, target, sandboxPolicy);
+    await assertMutationAllowed(this.remote, this.mapper, target, sandboxPolicy);
     return this.withLock(String(target.targetKey), async () => {
       throwIfAborted(signal, "edit");
       const existing = await this.probe(target, true);
@@ -809,15 +812,14 @@ var RemoteSshFileSystem = class extends FileSystem {
     }
   }
 };
-function assertMutationAllowed(mapper, target, policy) {
+async function assertMutationAllowed(remote, mapper, target, policy) {
   if (policy === void 0 || policy.mode === "danger-full-access") return;
   if (policy.mode === "read-only") {
     throw new FsError(`remote mutation denied for "${target.displayPath}" by read-only mode`, "FS_SANDBOX_DENIED");
   }
-  const workspace = mapper.toRemotePath(policy.workspaceRoot);
+  const roots=await remoteWritableRoots(remote,mapper,policy);
   const path = posixPathFromFileUri(String(target.targetKey));
-  const rel = posix2.relative(workspace, path);
-  if (rel === ".." || rel.startsWith("../") || posix2.isAbsolute(rel)) {
+  if (!roots.some(root => {const rel=posix2.relative(root,path);return rel==="" || rel!==".."&&!rel.startsWith("../")&&!posix2.isAbsolute(rel);})) {
     throw new FsError(`remote mutation denied outside workspace: "${target.displayPath}"`, "FS_SANDBOX_DENIED");
   }
 }
@@ -940,11 +942,11 @@ var RemoteSshShellExecutor = class extends ShellExecutor {
       aborted: outcome.aborted,
       timeoutMs: spec.timeoutMs,
       stdout: outcome.output.collected(),
-      stderr: { text: "", truncated: false }
+      stderr: { text: "", truncated: false },
+      sandbox: outcome.sandbox
     };
   }
   async execute(spec) {
-    if (spec.sandboxPolicy?.mode !== "danger-full-access") throw new Error("Remote commands require the session's native Full Access permission.");
     const process2 = new AhpShellProcess(this.remote, this.mapper, this.config.shellCommand, spec, spec.stdoutMaxBytes, spec.onExpiry === "none" ? 0 : spec.timeoutMs);
     this.processes.add(process2);
     void process2.done.then(() => this.processes.delete(process2));
@@ -997,7 +999,7 @@ var AhpShellProcess = class {
   result() {
     return this.done.then(() => {
       if (this.error) throw this.error;
-      return {exitCode:this.exitCode,signal:this.signal,timedOut:this.outcome.timedOut,aborted:this.outcome.aborted,timeoutMs:this.spec.timeoutMs,stdout:this.output.collected(),stderr:{text:"",truncated:false},sandbox:{mode:"danger-full-access",denied:false}};
+      return {exitCode:this.exitCode,signal:this.signal,timedOut:this.outcome.timedOut,aborted:this.outcome.aborted,timeoutMs:this.spec.timeoutMs,stdout:this.output.collected(),stderr:{text:"",truncated:false},sandbox:this.outcome.sandbox};
     });
   }
   readOutput() {
@@ -1011,9 +1013,6 @@ var AhpShellProcess = class {
 };
 async function executeTerminal(remote, mapper, shellCommand, spec, outputMaxBytes, timeoutMs, existingOutput) {
   const output = existingOutput ?? new TailBuffer(outputMaxBytes);
-  if (spec.sandboxPolicy !== void 0 && spec.sandboxPolicy.mode !== "danger-full-access") {
-    throw new Error(`dsh-remote-ssh/shell: ${spec.sandboxPolicy.mode} cannot confine arbitrary remote commands; use danger-full-access or a separately sandboxed SSH account`);
-  }
   spec.signal?.throwIfAborted();
   const client = await remote.getClient();
   spec.signal?.throwIfAborted();
@@ -1024,6 +1023,8 @@ async function executeTerminal(remote, mapper, shellCommand, spec, outputMaxByte
   const commandUri = fileUriFromPosixPath(commandPath);
   const stdinUri = fileUriFromPosixPath(stdinPath);
   const workdir = mapper.toRemotePath(spec.workdir);
+  const confinement = await wrapRemoteArgv(remote,mapper,spec.sandboxPolicy,[shellCommand,commandPath]);
+  const finish = outcome => ({...outcome,sandbox:sandboxOutcome(confinement,outcome.exitCode,output.collected().text)});
   let subscription;
   let terminalCreated = false;
   let stdinCreated = false;
@@ -1071,7 +1072,8 @@ async function executeTerminal(remote, mapper, shellCommand, spec, outputMaxByte
     const envArgs = Object.entries(env).map(([key, value]) => `${key}=${quotePosix(value)}`).join(" ");
     const stdinRedirect = stdinCreated ? quotePosix(stdinPath) : "/dev/null";
     const marker = new TerminalOutputCapture(token, output);
-    const input = `printf '\\036DSH:${token}:BEGIN\\037'; env ${envArgs} ${quotePosix(shellCommand)} ${quotePosix(commandPath)} < ${stdinRedirect}; __dsh_status=$?; printf '\\036DSH:${token}:END:%s\\037' "$__dsh_status"; exit "$__dsh_status"\r`;
+    const input = `printf '\\036DSH:${token}:BEGIN\\037'; env ${envArgs} ${confinement.argv.map(quotePosix).join(" ")} < ${stdinRedirect}; __dsh_status=$?; printf '\\036DSH:${token}:END:%s\\037' "$__dsh_status"; exit "$__dsh_status"\r`;
+    if(spec.signal?.aborted) {await client.request("disposeTerminal",{channel:terminalUri}).catch(()=>{});terminalCreated=false;return finish({exitCode:null,signal:"SIGTERM",timedOut:false,aborted:true,output});}
     client.dispatch(terminalUri, { type: ActionType.TerminalInput, data: input });
     let commandId;
     for (; ; ) {
@@ -1083,13 +1085,13 @@ async function executeTerminal(remote, mapper, shellCommand, spec, outputMaxByte
         await client.request("disposeTerminal", { channel: terminalUri }).catch(() => {
         });
         terminalCreated = false;
-        return {
+        return finish({
           exitCode: null,
           signal: "SIGTERM",
           timedOut: eventOrStop.cause === "timeout",
           aborted: eventOrStop.cause === "abort",
           output
-        };
+        });
       }
       if (eventOrStop.result.done) {
         throw new Error("Agent Host terminal subscription ended before command completion");
@@ -1102,37 +1104,37 @@ async function executeTerminal(remote, mapper, shellCommand, spec, outputMaxByte
       } else if (action.type === ActionType.TerminalData) {
         const exitCode = marker.push(action.data);
         if (exitCode !== void 0) {
-          return {
+          return finish({
             exitCode,
             signal: null,
             timedOut: false,
             aborted: false,
             output
-          };
+          });
         }
       } else if (action.type === ActionType.TerminalCommandFinished && action.commandId === commandId && marker.started) {
         continue;
       } else if (action.type === ActionType.TerminalCommandFinished && commandId === void 0) {
         continue;
       } else if (action.type === ActionType.TerminalCommandFinished && action.commandId === commandId) {
-        return {
+        return finish({
           exitCode: action.exitCode ?? null,
           signal: null,
           timedOut: false,
           aborted: false,
           output
-        };
+        });
       } else if (action.type === ActionType.TerminalExited) {
         if (!marker.finished) {
           throw new Error(`Agent Host terminal exited before the output marker (exit ${action.exitCode ?? "unknown"})`);
         }
-        return {
+        return finish({
           exitCode: action.exitCode ?? null,
           signal: action.exitCode === void 0 ? "SIGTERM" : null,
           timedOut: false,
           aborted: false,
           output
-        };
+        });
       }
     }
   } finally {

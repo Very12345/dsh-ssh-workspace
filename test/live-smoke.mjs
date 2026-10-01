@@ -17,9 +17,9 @@ const exe=sshExecutable(),args=['-o','StrictHostKeyChecking=yes','-o','BatchMode
 const remoteCodeCommand=process.env.DSH_SSH_CODE_COMMAND||await initializeHost({sshTarget:target,sshExecutable:exe,sshArgs:args.slice(0,-1)});
 const ssh=cmd=>execFileSync(exe,[...args,cmd],{encoding:'utf8',windowsHide:true}).trim();
 const dir=ssh('mktemp -d /tmp/dsh-ssh-workspace-sdk-XXXXXXXX');if(!/^\/tmp\/dsh-ssh-workspace-sdk-[a-zA-Z0-9]+$/.test(dir))throw new Error('unsafe path');
-const ctx=new Context(),scopes=[];let preset='standard',route;const agents=new Map();
+const ctx=new Context(),scopes=[];let preset='standard',route;const permission=process.env.DSH_SSH_TEST_PERMISSION||'workspace-write';const agents=new Map();
 try{
- ctx.provide('ptcRuntime',{language:'python'});ctx.provide('agents',{get:id=>agents.get(id),list:()=>[]});ctx.provide('agentPresets',{composedPreset:()=>preset});ctx.provide('shellEnv',{collect:()=>({})});ctx.provide('sessionProjections',{register:()=>()=>{},stateOf:()=>undefined});ctx.provide('sandboxPolicy',{defaultMode:'workspace-write',resolve:()=>({mode:'danger-full-access',workspaceRoot:route.aliasPath})});
+ ctx.provide('ptcRuntime',{language:'python'});ctx.provide('agents',{get:id=>agents.get(id),list:()=>[]});ctx.provide('agentPresets',{composedPreset:()=>preset});ctx.provide('shellEnv',{collect:()=>({})});ctx.provide('sessionProjections',{register:()=>()=>{},stateOf:()=>undefined});ctx.provide('sandboxPolicy',{defaultMode:'workspace-write',resolve:()=>({mode:permission,workspaceRoot:route.aliasPath})});
  ctx.provide('shell',{sandboxMode:'workspace-write',resolve:r=>({...r,workdir:r.workdir??route.aliasPath,timeoutMs:r.timeoutMs??15000,stdoutMaxBytes:10000})});ctx.provide('localFs',{});ctx.provide('localSubprocess',{});
  await ctx.plugin(SystemPrompt);await ctx.plugin(ToolRuntime);await ctx.plugin(Manager,{aliasRoot:resolve('.tmp/live-sdk-'+Date.now()+'/projects'),startupTimeoutMs:90000});
  await ctx.remoteSshManager.addServer({id:'test',label:'Test host',sshTarget:target,sshArgs:args.slice(0,-1),sshExecutable:exe,remoteCodeCommand});route=await ctx.remoteSshManager.addWorkspace('test',dir);
