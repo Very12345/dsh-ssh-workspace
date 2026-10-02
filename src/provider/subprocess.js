@@ -6,7 +6,8 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 import { win32 } from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import { ActionType } from "@microsoft/agent-host-protocol";
-import { SubprocessRuntime } from "@deepseek-ai/dsh-subprocess";
+import { SubprocessRuntime, SubprocessExecutableNotFoundError } from "@deepseek-ai/dsh-subprocess";
+import { scopeOf, scopeChainOf } from "@deepseek-ai/dsh-scope";
 
 // .tmp/provider/src/transport/runtime.ts
 import { spawn } from "node:child_process";
@@ -477,8 +478,51 @@ var TransparentSubprocessRuntime = class extends SubprocessRuntime {
       await Promise.allSettled([...this.remoteTerminals].map((terminal) => terminal.terminate()));
     }, "Remote SSH subprocess teardown");
   }
-  resolveExecutable(command, env, signal) {
-    return this.local.resolveExecutable(command, env, signal);
+  executionRoute() {
+    // Cordis traces this.ctx to the consumer. Terminal shell discovery has no
+    // cwd argument, so recover the native agent scope rather than using the
+    // machine running DSH (or another session's most recently selected host).
+    for (const key of scopeChainOf(scopeOf(this.ctx))) {
+      const header = key.session?.header;
+      if (header && typeof header.cwd === "string") {
+        return this.manager.routeShell(header.cwd, header.id);
+      }
+    }
+    return { kind: "local" };
+  }
+  async terminalEnvironment(signal) {
+    signal?.throwIfAborted();
+    if (this.executionRoute().kind === "local") return this.local.terminalEnvironment(signal);
+    // Supported remote hosts and our interactive terminal backend use Bash.
+    // resolveExecutable verifies availability in the same remote world.
+    return { platform: "posix", defaultShell: "/bin/bash" };
+  }
+  async resolveExecutable(command, env, signal) {
+    signal?.throwIfAborted();
+    const route = this.executionRoute();
+    if (route.kind === "local") return this.local.resolveExecutable(command, env, signal);
+    if (!command || command.includes("\0") || /[\r\n]/.test(command) ||
+        (!posix.isAbsolute(command) && /[\\/]/.test(command))) {
+      throw new SubprocessExecutableNotFoundError(`dsh-remote-ssh: expected a POSIX absolute executable or PATH name: ${command}`);
+    }
+    const lookup = `dsh_executable=$(command -v -- ${quotePosix(command)}) || exit 127; ` +
+      '[ -f "$dsh_executable" ] && [ -x "$dsh_executable" ] || exit 127; ' +
+      'case "$dsh_executable" in /*) printf "__DSH_EXECUTABLE__%s\\n" "$dsh_executable" ;; *) exit 127 ;; esac';
+    const shell = await this.manager.workspaceShell(route, "bash");
+    signal?.throwIfAborted();
+    const result = await shell.run(shell.resolve({
+      command: buildRemoteInteractiveCommand(["/bin/bash", "-c", lookup], env),
+      workdir: route.aliasPath, signal,
+      sandboxPolicy: { mode: "danger-full-access", workspaceRoot: route.aliasPath }
+    }));
+    signal?.throwIfAborted();
+    if (result.aborted || result.timedOut || result.signal) {
+      throw new Error("dsh-remote-ssh: remote executable lookup interrupted");
+    }
+    if (result.exitCode === 127) throw new SubprocessExecutableNotFoundError(`dsh-remote-ssh: executable not found: ${command}`);
+    const path = result.stdout.text.match(/^__DSH_EXECUTABLE__(\/[^\r\n]+)\r?$/m)?.[1];
+    if (result.exitCode !== 0 || !path) throw new Error(`dsh-remote-ssh: executable lookup failed (exit ${result.exitCode})`);
+    return path;
   }
   spawn(spec) {
     const route = this.manager.route(void 0, spec.cwd);
@@ -686,6 +730,7 @@ var RemoteAhpTerminalHandle = class _RemoteAhpTerminalHandle {
     this.stopping = resolvePromise;
   });
   terminating;
+  activityRevision = 0;
   static async create(route, workspace, spec) {
     if (spec.signal?.aborted) throw spec.signal.reason ?? new Error("remote terminal allocation aborted");
     const client = await workspace.remote.getClient();
@@ -725,7 +770,20 @@ var RemoteAhpTerminalHandle = class _RemoteAhpTerminalHandle {
     }
   }
   async write(data) {
+    this.activityRevision++;
     this.client.dispatch(this.channel, { type: ActionType.TerminalInput, data });
+  }
+  async resize(cols, rows) {
+    if (!Number.isSafeInteger(cols) || cols <= 0 || !Number.isSafeInteger(rows) || rows <= 0) {
+      throw new Error("dsh-remote-ssh: terminal dimensions must be positive integers");
+    }
+    this.activityRevision++;
+    this.client.dispatch(this.channel, { type: ActionType.TerminalResized, cols, rows });
+  }
+  async inspectActivity() {
+    // AHP does not expose the complete process tree. Prompt-looking output or
+    // silence cannot prove that background jobs are gone, so never claim idle.
+    return { state: "unknown", revision: this.activityRevision };
   }
   async inspectForeground() {
     return void 0;
@@ -763,7 +821,10 @@ var RemoteAhpTerminalHandle = class _RemoteAhpTerminalHandle {
         const event = next.result.value;
         if (event.type !== "action") continue;
         const action = event.params.action;
-        if (action.type === ActionType.TerminalData) this.output.write(action.data);
+        if (action.type === ActionType.TerminalData) {
+          this.activityRevision++;
+          this.output.write(action.data);
+        }
         else if (action.type === ActionType.TerminalExited) {
           return { exitCode: action.exitCode ?? null, signal: action.exitCode === void 0 ? "SIGTERM" : null };
         }
@@ -902,7 +963,8 @@ function buildRemoteInteractiveCommand(argv, env) {
   const envArgs = [];
   for (const [key, value] of Object.entries(env ?? {})) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error(`dsh-remote-ssh: invalid environment variable '${key}'`);
-    envArgs.push(`${key}=${value}`);
+    if (value === void 0) envArgs.push("-u", key);
+    else envArgs.push(`${key}=${value}`);
   }
   const remoteArgv = [remoteExecutable(executable), ...argv.slice(1)];
   return `exec env ${envArgs.map(quotePosix).join(" ")} ${remoteArgv.map(quotePosix).join(" ")}`;

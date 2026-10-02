@@ -30,6 +30,24 @@ try{
   const baseKey={},agent={id:preset,session:{header:{id:preset,cwd:route.aliasPath},append(){}}},base=createScope(ctx,baseKey),own=createScope(ctx,agent);scopes.push(base,own);bindScopeParent(agent,baseKey);agent.ctx=own.ctx;agents.set(agent.id,agent);
   base.ctx.get('tools').register(defineTool({name:'pwsh',description:'Original local tool',parameters:{},output:{schema:{type:'string'},render:(_a,v)=>[{type:'text',text:v}]},execute:async()=>''}));if(preset==='ptc')base.ctx.get('tools').presentAs('ptc');
   await ctx.sshWorkspaceRouting.bind(agent);const bash=ctx.tools.get('bash',agent),exec={agent,cwd:route.aliasPath,signal:new AbortController().signal,callId:'test'};
+  if(preset==='standard'){
+   const subprocess=agent.ctx.get('subprocess');
+   assert.deepEqual(await subprocess.terminalEnvironment(),{platform:'posix',defaultShell:'/bin/bash'});
+   const shellPath=await subprocess.resolveExecutable('bash');assert.match(shellPath,/^\//);
+   const {SubprocessExecutableNotFoundError}=await import('@deepseek-ai/dsh-subprocess');
+   await assert.rejects(subprocess.resolveExecutable('dsh_missing_executable_'+Date.now()),SubprocessExecutableNotFoundError);
+   const terminal=await subprocess.spawnTerminal({argv:[shellPath,'-i'],cwd:route.aliasPath,env:{DSH_SESSION_ID:agent.id},cols:80,rows:24,terminalType:'xterm-256color',shellActivity:true,graceMs:500});
+   let output='';terminal.output.on('data',chunk=>{output+=chunk.toString();});
+   const waitFor=async pattern=>{const deadline=Date.now()+20000;while(!pattern.test(output)){if(Date.now()>deadline)throw new Error('remote PTY output timeout');await new Promise(r=>setTimeout(r,50));}};
+   try{
+    await terminal.write("printf '__DSH_%s__\\n' PTY_READY\r");await waitFor(/__DSH_PTY_READY__/);
+    await terminal.resize(110,33);
+    await terminal.write("stty size; printf '__DSH_%s__\\n' PTY_RESIZED\r");await waitFor(/__DSH_PTY_RESIZED__/);assert.match(output,/33 110/);
+    assert.equal((await terminal.inspectActivity()).state,'unknown');
+    await terminal.write("pwd; printf '__DSH_%s__\\n' PTY_CWD\r");await waitFor(/__DSH_PTY_CWD__/);assert.ok(output.includes(dir));
+    console.log('native terminal environment, remote shell lookup, PTY input/output/cwd/resize/activity PASS');
+   }finally{await terminal.terminate();await terminal.done.catch(()=>{});}
+  }
   const result=await bash.execute({command:'printf remote_sdk_ok',description:'Verify SSH tool routing'},exec);assert.match(JSON.stringify(result),/remote_sdk_ok/);console.log(preset+' real remote tool execution PASS');
   if(preset==='minimal'){await bash.execute({command:'export DSH_TEST_PERSIST=retained',description:'Verify persistent shell'},exec);const value=await bash.execute({command:'printf "$DSH_TEST_PERSIST"',description:'Read persistent shell state'},exec);assert.match(JSON.stringify(value),/retained/);console.log('minimal persistent state PASS');}
   await ctx.sshWorkspaceRouting.dispose(agent);

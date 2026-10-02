@@ -42,3 +42,11 @@ macOS 已提供平台初始化分支，尚未进行真实 macOS SSH 联调。实
 读取/写入策略与官方一致：只读不给持久写路径；工作区内修改允许项目和平台临时目录；完全访问保留账户权限。文件写工具与命令共享 canonical writable roots。极简持久终端使用远端 sandbox provider，原生 mode fence 在会话权限切换时重建 PTY。批准后的单次执行使用批准模式，不覆盖会话的 standing mode。沙箱拒绝与 runner 故障分别按原生 result.sandbox.denied / runnerFailed 报告；部分隔离状态如实保留。
 
 在真实 Linux SSH 主机上验证了只读读取、项目写入、只读拒写、项目外拒写、显式完全访问、四种模式的 workspace-write 及极简持久变量。该主机的 Bubblewrap 因 UID map 权限不可用，Landlock 探测为 partial；实测文件内容写限制有效。macOS 实机与旧 ABI 未覆盖的文件效果仍不由此测试证明。
+
+## 0.1.9 原生终端面板接口
+
+透明 subprocess 适配器补齐 `terminalEnvironment()`，通过 Cordis 调用方的原生 Agent scope（包含子 scope）及已绑定会话执行世界选择平台。远程会话返回 POSIX/Bash；本机会话与无 scope 的宿主操作委托本机原生服务。`resolveExecutable()` 在同一远端执行带显式环境的只读路径查询，验证绝对文件路径及可执行权限。不存在的程序抛原生 `SubprocessExecutableNotFoundError`，网络和取消错误保留为故障，不冒充缺少 Shell、不回退为本机执行。
+
+AHP PTY 实现原生终端所需的 `resize()`、`inspectActivity()`。尺寸调整发送 `TerminalResized`；活动 revision 随输入、输出和尺寸变化增长。AHP 未提供完整进程树，活动状态保持 `unknown`，不根据提示符或静默推断 idle，因此不能依赖宿主的空闲自动回收；关闭面板终端或宿主销毁时仍显式清理。人工终端的原生权限边界保持不变，模型命令仍经过会话沙箱策略。
+
+新增 scoped SDK 回归覆盖本机 Windows 与远端 POSIX 同时存在、子 scope、环境覆盖、缺失 Shell、取消与移除映射；PTY 协议测试覆盖输入、尺寸、活动、分配取消与销毁。在授权的 Linux `webserver` 随机临时目录验证 Bash 查询、真实 PTY 输入/输出、cwd、`stty size` 确认调整至 110×33，以及四种模式、极简持久状态、连接恢复和原生 rg。测试完成后清理专用目录；macOS 和实际桌面终端面板尚未实机验证。
