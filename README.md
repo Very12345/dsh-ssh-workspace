@@ -76,3 +76,5 @@ node test/live-smoke.mjs
 ## 许可
 
 本插件的原创代码为 MIT。`src/provider/` 中的传输代码基于 [Yan-Zero/dsh-remote-ssh](https://github.com/Yan-Zero/dsh-remote-ssh) 的 Apache-2.0 源码快照；目录浏览器组件来自 DeepSeek 官方 DSH 0.2.0-rc.2，MIT 许可见 `DIRECTORY-BROWSER-LICENSE`。原始版本、修改范围及许可见 `NOTICE` 和 `PROVIDER-LICENSE`。Linux Landlock 预编译 runner 的许可见 `LANDLOCK-LICENSE`，配套审计源码许可见 `LANDLOCK-SOURCE-LICENSE`。不分发 Microsoft VS Code 二进制文件。
+
+设置页采用紧凑的行间距与分区留白，保持原生正文字号。侧栏及页面标题使用独立 SVG 图标，并随深浅色主题显示。当前宿主的固定齿轮通过插件内、仅限自身导航项的样式适配替换；卸载时恢复，不修改宿主文件。

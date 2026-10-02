@@ -1,6 +1,6 @@
 {
   "name": "@very12345/dsh-ssh-workspace",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "type": "module",
   "description": "SSH host management and remote project selection for DeepSeek Harness",
   "license": "MIT",
@@ -42,7 +42,9 @@
     "NOTICE",
     "DIRECTORY-BROWSER-LICENSE",
     "LANDLOCK-LICENSE",
-    "LANDLOCK-SOURCE-LICENSE"
+    "LANDLOCK-SOURCE-LICENSE",
+    "assets/settings-icon.svg",
+    "assets/CODICONS-LICENSE"
   ],
   "engines": {
     "node": ">=22.15"

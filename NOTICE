@@ -16,3 +16,11 @@ Linux Landlock executables are unmodified prebuilt artifacts from
 See LANDLOCK-LICENSE. The accompanying unmodified audit source is copied
 from @deepseek-ai/node-addon-system 0.1.2; its supplied license is retained
 in LANDLOCK-SOURCE-LICENSE. No package build/install scripts are executed.
+
+Settings remote glyph
+---------------------
+The remote settings icon is the Microsoft VS Code Codicons remote glyph:
+https://github.com/microsoft/vscode-codicons/blob/main/src/icons/remote.svg
+Copyright Microsoft and contributors, Creative Commons Attribution 4.0.
+See assets/CODICONS-LICENSE for the supplied artwork license and notices.
+The geometry is unchanged; rendering size and theme color follow DSH.
