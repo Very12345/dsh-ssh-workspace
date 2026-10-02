@@ -7,7 +7,7 @@ import {ConnectionStatus} from '../connection-status.js';
 // .tmp/provider/src/routing/manager.ts
 import { createHash, randomUUID as randomUUID3 } from "node:crypto";
 import { spawn as spawn2 } from "node:child_process";
-import { mkdir, readFile, writeFile, rename, lstat, rmdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, lstat, rmdir, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute as isAbsolute2, relative as relative2, resolve as resolve2, sep as sep2 } from "node:path";
 import { posix as posix4 } from "node:path";
@@ -1363,7 +1363,19 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
       const stored = JSON.parse(await readFile(resolve2(this.entry.aliasRoot, "..", "catalog.json"), "utf8"));
       config = { ...this.entry, ...stored, aliasRoot: this.entry.aliasRoot };
     } catch (error) { if (error.code !== "ENOENT") throw error; }
+    const removed=await this.deletedAliasMarkers();
+    if(removed.length){
+      config={...config,retiredAliases:[...new Set([...(config.retiredAliases ?? []),...removed])],deletedWorkspaceAliases:[...new Set([...(config.deletedWorkspaceAliases ?? []),...removed])]};
+      config.workspaces=config.workspaces.filter(workspace=>!config.retiredAliases.includes(normalizeLocal(resolve2(workspace.aliasPath ?? resolve2(config.aliasRoot,workspace.id)))));
+      config=await this.saveCatalog(config);
+    }
     await this.queueRefresh(config);
+  }
+  async deletedAliasMarkers() {
+    const directory=resolve2(this.entry.aliasRoot,"..","deleted-projects");
+    const names=await readdir(directory).catch(error=>{if(error.code==="ENOENT")return [];throw error;}),removed=[];
+    for(const file of names){if(!/^[a-f0-9]{64}\.json$/.test(file))continue;const value=JSON.parse(await readFile(resolve2(directory,file),"utf8"));if(typeof value.aliasPath!=="string" || !isAbsolute2(value.aliasPath))throw new Error("Invalid project deletion marker");removed.push(normalizeLocal(resolve2(value.aliasPath)));}
+    return removed;
   }
   async updateServer(id, patch) {
     const next = this.snapshot();
@@ -1862,10 +1874,18 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
   }
   async saveCatalog(next) {
     next=structuredClone(next);
-    const retired=new Set([...(this.current.retiredAliases ?? []),...(next.retiredAliases ?? []),...this.retiringAliases]);
+    const markers=await this.deletedAliasMarkers();
+    const retired=new Set([...(this.current.retiredAliases ?? []),...(next.retiredAliases ?? []),...this.retiringAliases,...markers]);
     next.workspaces=next.workspaces.filter(workspace=>!retired.has(normalizeLocal(resolve2(workspace.aliasPath ?? resolve2(next.aliasRoot,workspace.id)))));
     next.retiredAliases=[...retired];
-    next.deletedWorkspaceAliases=[...new Set([...(this.current.deletedWorkspaceAliases ?? []),...(next.deletedWorkspaceAliases ?? []),...this.retiringAliases])];
+    next.deletedWorkspaceAliases=[...new Set([...(this.current.deletedWorkspaceAliases ?? []),...(next.deletedWorkspaceAliases ?? []),...this.retiringAliases,...markers])];
+    // Independent per-alias markers survive a stale/older process rewriting catalog.json.
+    for(const aliasPath of next.deletedWorkspaceAliases){
+      const directory=resolve2(this.entry.aliasRoot,"..","deleted-projects"),file=resolve2(directory,createHash("sha256").update(aliasPath).digest("hex")+".json");
+      await mkdir(directory,{recursive:true});
+      if(await lstat(file).then(()=>true,error=>{if(error.code==="ENOENT")return false;throw error;}))continue;
+      const pending=file+"."+randomUUID3()+".tmp";await writeFile(pending,JSON.stringify({aliasPath})+"\n",{mode:0o600});await rename(pending,file);
+    }
     const file = resolve2(this.entry.aliasRoot, "..", "catalog.json");
     const temp = file + "." + randomUUID3() + ".tmp";
     await mkdir(resolve2(file, ".."), {recursive: true});

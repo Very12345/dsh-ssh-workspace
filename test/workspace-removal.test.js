@@ -40,3 +40,8 @@ test('removal without a native registry records a tombstone which cleans the old
  const f=await fixture(t),route=await f.m.addWorkspace(server.id,'/remote/project');f.m.workspaceRegistry=undefined;await f.m.removeWorkspace(route.workspace.id);assert.equal(f.records.size,1);
  assert.ok(f.m.snapshot().deletedWorkspaceAliases.length);await f.ctx.fiber.dispose();const next=await fixture(t,f.root,f.records);await tick();assert.equal(next.records.size,0);assert.equal(next.m.snapshot().workspaces.length,0);
 });
+
+test('per-project deletion markers survive an older process replacing the entire catalog with stale data',async t=>{
+ const f=await fixture(t),route=await f.m.addWorkspace(server.id,'/remote/project'),stale=f.m.snapshot();f.m.workspaceRegistry=undefined;await f.m.removeWorkspace(route.workspace.id);await f.ctx.fiber.dispose();
+ await writeFile(join(f.root,'catalog.json'),JSON.stringify(stale));const next=await fixture(t,f.root,f.records);await tick();assert.equal(next.m.snapshot().workspaces.length,0);assert.equal(next.records.size,0);await assert.rejects(stat(route.aliasPath),{code:'ENOENT'});
+});

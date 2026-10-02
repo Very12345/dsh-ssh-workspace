@@ -43,7 +43,7 @@ SSH config 使用系统 OpenSSH 解释连接选项，包含 `Host`、`Include`�
 - 桌面操作和浏览器插件仍控制 DSH 所在的本机。远端 Windows、文件实时监听、SSH 密码弹窗和远程桌面不在本版本范围内。
 - Agent Host 采用 AHP 0.9 协议；自带其他版本的运行环境遇到不兼容会报错。初始化使用已验证的固定 CLI 版本。
 
-连接和映射保存在 DSH home 的 `ssh-workspace/catalog.json`，占位目录位于 `ssh-workspace/projects/`。这些属于本地用户数据，不进仓库。
+连接和映射保存在 DSH home 的 `ssh-workspace/catalog.json`，占位目录位于 `ssh-workspace/projects/`。独立删除标记保存在 `ssh-workspace/deleted-projects/`，即使旧进程把目录配置写回旧快照，也不会在下次启动时恢复已删除的项目。这些属于本地用户数据，不进仓库。
 
 设置页的“远程项目”可以移除单个项目；“清理本机残留”只尝试删除已撤销映射的空占位目录。目录视图和工具输出里的本地占位路径是远端文件的地址映射，不代表项目文件已复制到本机。附件、预览及会话日志属于宿主管理的数据，不由此按钮清除。
 
