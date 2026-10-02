@@ -11,6 +11,7 @@ export function createAPI(manager){
  let tail=Promise.resolve();
  const api={
   async catalog(){const s=manager.snapshot(),discovery=await discoverSshConfigHosts(s.sshConfigFile?[s.sshConfigFile]:defaultSshConfigFiles());return {ok:true,servers:s.servers,workspaces:s.workspaces,configFile:s.sshConfigFile||'',configHosts:discovery.hosts,errors:discovery.errors};},
+  status(){return {ok:true,...manager.connectionStatuses()};},
   perform(input,signal){const run=tail.then(()=>this.dispatch(input,signal));tail=run.catch(()=>{});return run;},
   async dispatch(input,signal){
    signal?.throwIfAborted();
@@ -36,6 +37,7 @@ export function createAPI(manager){
 export function apply(ctx){
  const api=createAPI(ctx.remoteSshManager);
  ctx.provide('sshWorkspace',api);
+ ctx.inject(['webServer'],web=>web.effect(()=>web.webServer.register({kind:'exact',path:ROUTE+'/status',handler:async(req,res)=>{res.writeHead(req.method==='GET'?200:405,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(req.method==='GET'?api.status():{ok:false,error:'Method not allowed'}));}})));
  ctx.inject(['webServer'],web=>web.effect(()=>web.webServer.register({kind:'exact',path:ROUTE,handler:async(req,res)=>{
   const send=(status,value)=>{if(res.destroyed||res.writableEnded)return;res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value));};
   const abort=new AbortController();req.on('aborted',()=>abort.abort());res.on?.('close',()=>{if(!res.writableEnded)abort.abort();});

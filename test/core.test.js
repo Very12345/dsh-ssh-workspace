@@ -13,6 +13,14 @@ import {injectSearchPathHook,remoteAbsolutePath} from '../src/provider/search.js
 const temp=async t=>{const p=await mkdtemp(join(tmpdir(),'dsh-ssh-test-'));t.after(()=>rm(p,{recursive:true,force:true}));return p;};
 async function manager(t){const root=await temp(t),ctx=new Context();await ctx.plugin(Manager,{aliasRoot:join(root,'projects')});t.after(()=>ctx.fiber.dispose());return {m:ctx.remoteSshManager,ctx,root};}
 const server={id:'test',label:'Test host',sshTarget:'example.invalid'};
+
+test('status snapshots observe existing hosts without acquiring or starting connections',async t=>{
+ const {m}=await manager(t);await m.addServer(server);const route=await m.addWorkspace(server.id,'/remote/project');
+ m.hostContext=()=>{throw new Error('Status must not open SSH');};
+ assert.equal(m.connectionStatuses().servers[0].state,'idle');assert.equal(m.connectionStatuses().workspaces[0].aliasPath,route.aliasPath);
+ m.hosts.set(server.id,new Promise(()=>{}));assert.equal(m.connectionStatuses().servers[0].state,'connecting');m.hosts.delete(server.id);
+ m.observedHosts=new Map([[server.id,{remote:{monitor:{snapshot:()=>({state:'disconnected',updatedAt:123})}}}]]);assert.equal(m.connectionStatuses().servers[0].state,'disconnected');
+});
 test('manual host validates destination, username, port and options',()=>{
  const s=manualServer({hostname:'example.invalid',username:'developer',port:2222,proxyJump:'jump'});
  assert.equal(s.sshTarget,'developer@example.invalid');assert.ok(s.sshArgs.includes('StrictHostKeyChecking=yes'));assert.ok(s.sshArgs.includes('BatchMode=yes'));

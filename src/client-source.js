@@ -3,6 +3,7 @@ window.__ModuleLoader__.load({id:'@very12345/dsh-ssh-workspace',factory:require=
  __DIRECTORY_BROWSER__
  const DirectoryBrowser=createDirectoryBrowser(require);
  const primitives=require('@deepseek-ai/dsh-client-ui-primitives');
+ __CONNECTION_BADGES__
  const STYLE=__SSH_STYLE__;
  const rpc=async (input,signal)=>{const r=await fetch('/plugins/ssh-workspace',input?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),signal}:{signal});const data=await r.json();if(!r.ok||!data.ok)throw new Error(data.error||'请求失败');return input?data.value:data;};
  const Icon=()=>h('svg',{width:22,height:22,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.6},h('rect',{x:3,y:4,width:18,height:12,rx:2}),h('path',{d:'M8 20h8M12 16v4M6 8l3 2-3 2M11 12h4'}));
@@ -44,6 +45,6 @@ window.__ModuleLoader__.load({id:'@very12345/dsh-ssh-workspace',factory:require=
   if(computer==='local'&&nativeLocal)return h(primitives.Modal,{open,onClose:onCancel,title:'选择工作区目录',closeLabel:'取消',className:'ssh-native-choice'},selector,h('div',{className:'ssh-native-actions'},h(primitives.Button,{onClick:onCancel},'取消'),h(primitives.Button,{variant:'primary',disabled:busy||working,onClick:async()=>{const token=generation.current;setWorking(true);try{const path=await pickLocal();if(token!==generation.current)return;if(path===null)onCancel();else onPicked(path);}catch(e){onError(e.message);}finally{if(token===generation.current)setWorking(false);}}},'选择文件夹')));
   return h(DirectoryBrowser,{key:computer,open,busy:busy||working,listDirectory,createDirectory,onOpen:choose,onClose:onCancel,t:translate,headerExtra:selector});
  }
- function apply(ctx){ctx.slots.inject('settings.section',()=>ctx.slots.register({name:'settings.section',id:'ssh-workspace',label:'远程工作区',order:48},Settings));for(const slot of ['sidebar.workspaces.directoryFlow','conversation.hero.workspace.directoryFlow'])ctx.slots.inject(slot,()=>ctx.slots.register({name:slot,id:'ssh-workspace',priority:-100,inject:()=>({nativeLocal:globalThis.__DSH_DIRECTORY_PICKER__!==undefined,pickLocal:()=>globalThis.__DSH_DIRECTORY_PICKER__?.pick()??ctx.uiWorkspace.pickDirectory()})},ProjectFlow));}
+ function apply(ctx){ctx.slots.inject('settings.section',()=>ctx.slots.register({name:'settings.section',id:'ssh-workspace',label:'远程工作区',order:48},Settings));ctx.slots.inject('shell.overlay',()=>ctx.slots.register({name:'shell.overlay',id:'ssh-workspace-status'},ConnectionBadges));for(const slot of ['sidebar.workspaces.directoryFlow','conversation.hero.workspace.directoryFlow'])ctx.slots.inject(slot,()=>ctx.slots.register({name:slot,id:'ssh-workspace',priority:-100,inject:()=>({nativeLocal:globalThis.__DSH_DIRECTORY_PICKER__!==undefined,pickLocal:()=>globalThis.__DSH_DIRECTORY_PICKER__?.pick()??ctx.uiWorkspace.pickDirectory()})},ProjectFlow));}
  return {name:'ssh-workspace-client',inject:['slots','uiWorkspace'],apply};
 }});

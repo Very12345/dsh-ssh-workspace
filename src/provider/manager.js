@@ -2,6 +2,7 @@
 // See PROVIDER-LICENSE and NOTICE. Maintained snapshot for DSH SSH Workspace.
 
 import {wrapRemoteArgv, sandboxOutcome, remoteWritableRoots, clearRemoteSandbox} from '../remote-sandbox.js';
+import {ConnectionStatus} from '../connection-status.js';
 
 // .tmp/provider/src/routing/manager.ts
 import { createHash, randomUUID as randomUUID3 } from "node:crypto";
@@ -146,6 +147,7 @@ var RemoteSshRuntime = class extends Service {
   tunnel;
   embeddedAgentHost;
   disposed = false;
+  monitor = new ConnectionStatus();
   constructor(ctx, config) {
     super(ctx, "remoteSsh");
     this.config = config;
@@ -162,6 +164,7 @@ var RemoteSshRuntime = class extends Service {
     });
     ctx.effect(() => async () => {
       this.disposed = true;
+      this.monitor.disconnected();
       clearRemoteSandbox(this);
       try {
         const connection = await this.ready;
@@ -220,8 +223,12 @@ var RemoteSshRuntime = class extends Service {
     }
   }
   async open() {
-    if (this.config.directUrl !== void 0) return this.connectEndpoint(this.config.directUrl);
-    return this.openOverSsh();
+    this.monitor.connecting();
+    try {
+      const connection=await (this.config.directUrl !== void 0 ? this.connectEndpoint(this.config.directUrl) : this.openOverSsh());
+      if(!this.disposed)this.monitor.connected(connection,fileUriFromPosixPath(this.remoteAccessRoot));
+      return connection;
+    } catch(error){this.monitor.disconnected();throw error;}
   }
   async connectEndpoint(url) {
     const transport = await WebSocketTransport.connect(url);
@@ -1718,6 +1725,10 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     }
     return pending;
   }
+  /** Non-blocking status snapshot; never join pending SSH startup or start an idle host. */
+  connectionStatuses() {
+    return {servers:this.current.servers.map(server=>({id:server.id,...(this.observedHosts?.get(server.id)?.remote.monitor.snapshot() ?? {state:this.hosts.has(server.id)?'connecting':'idle',updatedAt:null})})),workspaces:[...this.routeByWorkspaceId.values()].map(route=>({id:route.workspace.id,serverId:route.server.id,aliasPath:route.aliasPath}))};
+  }
   async createWorkspaceShellContext(route, dialect) {
     const host = await this.hostContext(route.server);
     const child = new Context2();
@@ -1748,7 +1759,9 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
         startupTimeoutMs: this.current.startupTimeoutMs,
         requestTimeoutMs: this.current.requestTimeoutMs
       });
-      return { ctx: child, remote: child.remoteSsh, key: serverRuntimeKey(server), server, transport };
+      const host={ ctx: child, remote: child.remoteSsh, key: serverRuntimeKey(server), server, transport };
+      this.observedHosts ??= new Map();this.observedHosts.set(server.id,host);
+      return host;
     } catch (error) {
       await child.fiber.dispose().catch(() => {
       });
@@ -1768,6 +1781,7 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     return { executable, args, multiplexed };
   }
   async disposeHost(host) {
+    if(this.observedHosts?.get(host.server.id)===host)this.observedHosts.delete(host.server.id);
     await host.ctx.fiber.dispose();
     if (!host.transport.multiplexed) return;
     await closeControlMaster(host.transport, host.server.sshTarget);
