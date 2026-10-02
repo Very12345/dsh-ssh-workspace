@@ -7,7 +7,7 @@ import {ConnectionStatus} from '../connection-status.js';
 // .tmp/provider/src/routing/manager.ts
 import { createHash, randomUUID as randomUUID3 } from "node:crypto";
 import { spawn as spawn2 } from "node:child_process";
-import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename, lstat, rmdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, isAbsolute as isAbsolute2, relative as relative2, resolve as resolve2, sep as sep2 } from "node:path";
 import { posix as posix4 } from "node:path";
@@ -1282,7 +1282,8 @@ var workspaceSchema = z4.object({
   serverId: z4.string().required(),
   remotePath: z4.string().required(),
   aliasPath: z4.string(),
-  title: z4.string()
+  title: z4.string(),
+  registryWorkspaceId: z4.string()
 });
 var RemoteSshManager = class _RemoteSshManager extends Service2 {
   static inject = [];
@@ -1295,6 +1296,7 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     openFileMode: z4.union(["auto", "vscode", "cursor", "windsurf", "vscodium", "custom", "download"]).default("auto"),
     openFileEditorPath: z4.string(),
     openFileDownloadMaxBytes: z4.number().default(64 * 1024 * 1024),
+    deletedWorkspaceAliases: z4.array(z4.string()).default([]),
     startupTimeoutMs: z4.number().default(6e5),
     requestTimeoutMs: z4.number().default(3e4)
   });
@@ -1309,6 +1311,9 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
   hosts = /* @__PURE__ */ new Map();
   sessionWorlds = /* @__PURE__ */ new Map();
   workspaceRegistry;
+  nativeWorkspaceIds = new Map();
+  retiringAliases = new Set();
+  retirementTail = Promise.resolve();
   refreshTail = Promise.resolve();
   initialRefresh;
   constructor(ctx, config) {
@@ -1319,7 +1324,19 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     this.initialRefresh = this.loadCatalog();
     ctx.inject(["workspaceRegistry"], (workspaceCtx) => {
       this.workspaceRegistry = workspaceCtx.workspaceRegistry;
-      void this.registerAllWorkspaces().catch((error) => {
+      this.nativeWorkspaceIds.clear();
+      workspaceCtx.on("domain/changed", change => {
+        if(change.domain!=="workspace" || change.table!=="workspaces")return;
+        if(change.operation==="put" && change.value?.path){
+          const route=this.findAlias(change.value.path);
+          if(route && normalizeLocal(resolve2(change.value.path))===normalizeLocal(route.aliasPath))this.nativeWorkspaceIds.set(String(change.key),route.workspace.id);
+        }
+        if(change.operation==="deleted"){
+          const id=this.nativeWorkspaceIds.get(String(change.key));
+          if(id)void this.removeWorkspace(id,{native:false}).catch(error=>this.ctx.logger.error(error));
+        }
+      });
+      void this.initialRefresh.then(()=>this.registerAllWorkspaces({reconcileMissing:true})).catch((error) => {
         this.ctx.logger.error(error);
       });
       workspaceCtx.effect(() => () => {
@@ -1327,6 +1344,7 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
       }, "Remote SSH workspace registry attachment");
     });
     ctx.effect(() => async () => {
+      await this.retirementTail;
       await this.refreshTail;
       const contexts = await Promise.allSettled(this.contexts.values());
       await Promise.allSettled(contexts.flatMap((result) => result.status === "fulfilled" ? [result.value.ctx.fiber.dispose()] : []));
@@ -1453,14 +1471,40 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     if (route === void 0) throw new Error(`remote workspace '${id}' was not published`);
     return route;
   }
-  /** Remove execution routing while retaining alias, Workspace, and Session history. */
-  async removeWorkspace(id) {
-    const next = this.snapshot();
-    const before = next.workspaces.length;
-    next.workspaces = next.workspaces.filter((workspace) => workspace.id !== id);
-    if (next.workspaces.length === before) return false;
-    await this.replaceSettings(next);
-    return true;
+  /** Retire the binding together with the native project; never remove remote files or session logs. */
+  removeWorkspace(id,{native=true}={}) {
+    const route=this.routeByWorkspaceId.get(id);
+    if(route)this.retiringAliases.add(normalizeLocal(route.aliasPath));
+    const task=this.retirementTail.then(async()=>{
+      const currentRoute=this.routeByWorkspaceId.get(id) || route;
+      if(!currentRoute)return false;
+      const registry=this.workspaceRegistry;
+      const nativeId=currentRoute.workspace.registryWorkspaceId || [...this.nativeWorkspaceIds].find(([,workspaceId])=>workspaceId===id)?.[0];
+      const next=this.snapshot();next.workspaces=next.workspaces.filter(workspace=>workspace.id!==id);
+      await this.replaceSettings(next);
+      const nativeWorkspace=nativeId && registry?.get(nativeId);
+      if(native && nativeWorkspace && normalizeLocal(resolve2(nativeWorkspace.path))===normalizeLocal(currentRoute.aliasPath))await registry.delete(nativeId);
+      if(nativeId)this.nativeWorkspaceIds.delete(nativeId);
+      await this.cleanupAlias(currentRoute.aliasPath);
+      return true;
+    });
+    this.retirementTail=task.catch(()=>{});return task;
+  }
+  /** Delete only empty, plugin-owned placeholder folders. Non-empty/custom directories are preserved. */
+  async cleanupAlias(path) {
+    const root=resolve2(this.entry.aliasRoot),target=resolve2(path),rel=relative2(root,target);
+    if(!rel || rel===".." || rel.startsWith(".."+sep2) || isAbsolute2(rel))return false;
+    try{const info=await lstat(target);if(info.isSymbolicLink() || !info.isDirectory())return false;await rmdir(target);return true;}
+    catch(error){if(["ENOENT","ENOTEMPTY","EEXIST","EBUSY"].includes(error.code))return false;throw error;}
+  }
+  async cleanupLocalAliases() {
+    let removed=0,retained=0;
+    for(const alias of this.current.retiredAliases ?? []){
+      if(this.findAlias(alias)){retained++;continue;}
+      if(await this.cleanupAlias(alias))removed++;
+      else {try{await lstat(alias);retained++;}catch(error){if(error.code!=="ENOENT")throw error;}}
+    }
+    return {removed,retained};
   }
   /** Remove one server and tombstone all of its workspace execution routes. */
   async removeServer(id) {
@@ -1653,19 +1697,40 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     this.current = structuredClone(config);
     await this.registerAllWorkspaces();
   }
-  async registerAllWorkspaces() {
+  async registerAllWorkspaces({reconcileMissing=false}={}) {
     const registry = this.workspaceRegistry;
     if (registry === void 0) return;
-    for (const route of this.routeByWorkspaceId.values()) {
+    if(reconcileMissing){
+      const deleted=new Set(this.current.deletedWorkspaceAliases ?? []);
+      for(const workspace of registry.list())if(deleted.has(normalizeLocal(resolve2(workspace.path)))){
+        await registry.delete(workspace.id);await this.cleanupAlias(workspace.path);
+      }
+    }
+    let changed=false;
+    for (const route of [...this.routeByWorkspaceId.values()]) {
+      if(this.retiringAliases.has(normalizeLocal(route.aliasPath)))continue;
+      if(route.workspace.registryWorkspaceId && !registry.get(route.workspace.registryWorkspaceId)){
+        if(reconcileMissing)void this.removeWorkspace(route.workspace.id,{native:false}).catch(error=>this.ctx.logger.error(error));
+        continue;
+      }
       const title = route.workspace.title ?? `${route.server.label} > ${posix4.basename(route.workspace.remotePath) || route.workspace.remotePath}`;
       const workspace = await registry.create(route.aliasPath, title);
+      if(this.retiringAliases.has(normalizeLocal(route.aliasPath))){await registry.delete(workspace.id);continue;}
+      this.nativeWorkspaceIds.set(String(workspace.id),route.workspace.id);
+      if(route.workspace.registryWorkspaceId!==String(workspace.id)){
+        route.workspace.registryWorkspaceId=String(workspace.id);
+        const record=this.current.workspaces.find(item=>item.id===route.workspace.id);if(record)record.registryWorkspaceId=String(workspace.id);
+        changed=true;
+      }
       if (workspace.title !== title) await workspace.setTitle(title);
     }
+    if(changed)await this.saveCatalog(this.snapshot());
   }
   findAlias(path) {
     const absolute = normalizeLocal(resolve2(path));
     let best;
     for (const [alias, route] of this.routes) {
+      if(this.retiringAliases.has(alias))continue;
       if (!isContained(alias, absolute)) continue;
       if (best === void 0 || alias.length > normalizeLocal(best.aliasPath).length) best = route;
     }
@@ -1787,15 +1852,26 @@ var RemoteSshManager = class _RemoteSshManager extends Service2 {
     await closeControlMaster(host.transport, host.server.sshTarget);
   }
   async replaceSettings(next) {
+    const retired=new Set([...(this.current.retiredAliases ?? []),...(next.retiredAliases ?? []),...this.retiringAliases]);
+    next.workspaces=next.workspaces.filter(workspace=>!retired.has(normalizeLocal(resolve2(workspace.aliasPath ?? resolve2(next.aliasRoot,workspace.id)))));
     const active = new Set(next.workspaces.map(w => normalizeLocal(resolve2(w.aliasPath ?? resolve2(next.aliasRoot,w.id)))));
-    next.retiredAliases = [...new Set([...(next.retiredAliases ?? []), ...[...this.remoteAliases].filter(alias => !active.has(alias))])];
+    next.retiredAliases = [...new Set([...retired, ...[...this.remoteAliases].filter(alias => !active.has(alias))])];
     this.validate(next);
+    const saved=await this.saveCatalog(next);
+    await this.queueRefresh(saved);
+  }
+  async saveCatalog(next) {
+    next=structuredClone(next);
+    const retired=new Set([...(this.current.retiredAliases ?? []),...(next.retiredAliases ?? []),...this.retiringAliases]);
+    next.workspaces=next.workspaces.filter(workspace=>!retired.has(normalizeLocal(resolve2(workspace.aliasPath ?? resolve2(next.aliasRoot,workspace.id)))));
+    next.retiredAliases=[...retired];
+    next.deletedWorkspaceAliases=[...new Set([...(this.current.deletedWorkspaceAliases ?? []),...(next.deletedWorkspaceAliases ?? []),...this.retiringAliases])];
     const file = resolve2(this.entry.aliasRoot, "..", "catalog.json");
     const temp = file + "." + randomUUID3() + ".tmp";
     await mkdir(resolve2(file, ".."), {recursive: true});
     await writeFile(temp, JSON.stringify(next, null, 2) + "\n", {mode: 0o600});
     await rename(temp, file);
-    await this.queueRefresh(next);
+    return next;
   }
   validate(config) {
     if (!isAbsolute2(config.aliasRoot)) throw new Error("dsh-remote-ssh: aliasRoot must be an absolute local path");

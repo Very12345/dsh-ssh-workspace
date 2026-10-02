@@ -25,6 +25,8 @@ export function createAPI(manager){
     case 'import':{const discovery=await discoverSshConfigHosts(snapshot.sshConfigFile?[snapshot.sshConfigFile]:defaultSshConfigFiles());const host=discovery.hosts.find(h=>h.sshTarget===input.alias);if(!host)throw new Error('SSH alias not discovered');await effectiveHost(host.sshTarget,snapshot.sshConfigFile,signal);const existing=snapshot.servers.find(s=>s.id===host.id);return existing||manager.addServer(configServer(host));}
     case 'config':await manager.setSshConfigFile(input.path||undefined);return true;
     case 'remove':return manager.removeServer(input.id);
+    case 'workspace-remove':return manager.removeWorkspace(input.id);
+    case 'cleanup-local':return manager.cleanupLocalAliases();
     case 'initialize':{const server=snapshot.servers.find(s=>s.id===input.id);if(!server)throw new Error('Unknown SSH host');const remoteCodeCommand=await initializeHost(server,snapshot.sshConfigFile,signal);return manager.updateServer(server.id,{remoteCodeCommand});}
     case 'list':{const server=snapshot.servers.find(s=>s.id===input.id);if(!server)throw new Error('Unknown SSH host');return manager.listRemoteDirectory(server,input.path);}
     case 'project':{const server=snapshot.servers.find(s=>s.id===input.id);if(!server)throw new Error('Unknown SSH host');if(typeof input.path!=='string'||!posix.isAbsolute(input.path))throw new Error('Select an absolute remote directory');const listed=await manager.listRemoteDirectory(server,input.path);const previous=snapshot.workspaces.find(w=>w.serverId===server.id&&w.remotePath===listed.path);const route=previous?manager.workspace(previous.id):await manager.addWorkspace(server.id,listed.path);return {aliasPath:route.aliasPath,remotePath:route.workspace.remotePath};}
