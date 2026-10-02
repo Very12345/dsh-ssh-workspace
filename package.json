@@ -1,6 +1,6 @@
 {
   "name": "@very12345/dsh-ssh-workspace",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "SSH host management and remote project selection for DeepSeek Harness",
   "license": "MIT",

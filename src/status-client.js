@@ -3,18 +3,7 @@
  const normalizedPath=value=>{const path=String(value||'').replaceAll('\\','/').replace(/\/+$/,'');return /^[a-z]:\//i.test(path)?path.toLowerCase():path;};
  function ConnectionBadges({useWorkspaces}){
   const workspaces=useWorkspaces(state=>state.items),[status,setStatus]=R.useState({servers:[],workspaces:[]});
-  R.useEffect(()=>{
-   const abort=new AbortController();let timer;
-   const update=async()=>{
-    if(document.visibilityState==='hidden')return;
-    try{const response=await fetch('/plugins/ssh-workspace/status',{signal:abort.signal});const data=await response.json();if(!response.ok||!data.ok)throw new Error('Status unavailable');if(!abort.signal.aborted)setStatus(data);}
-    catch{if(!abort.signal.aborted)setStatus(value=>({...value,servers:value.servers.map(server=>({...server,state:'unknown'}))}));}
-    finally{if(!abort.signal.aborted)timer=setTimeout(update,5000);}
-   };
-   const visibility=()=>{clearTimeout(timer);if(document.visibilityState!=='hidden')void update();};
-   document.addEventListener('visibilitychange',visibility);void update();
-   return()=>{abort.abort();clearTimeout(timer);document.removeEventListener('visibilitychange',visibility);};
-  },[]);
+  R.useEffect(()=>pollConnectionStatus({onData:setStatus,onError:()=>setStatus(value=>({...value,servers:value.servers.map(server=>({...server,state:'unknown'}))}))}),[]);
   R.useEffect(()=>{
    const servers=new Map(status.servers.map(server=>[server.id,server]));
    const routes=new Map(status.workspaces.map(workspace=>[normalizedPath(workspace.aliasPath),workspace]));

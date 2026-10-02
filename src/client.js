@@ -943,23 +943,38 @@ return DirectoryBrowser;
 
  const DirectoryBrowser=createDirectoryBrowser(require);
  const primitives=require('@deepseek-ai/dsh-client-ui-primitives');
-  const STATUS_LABELS={idle:'未连接',connecting:'连接中',connected:'已连接',disconnected:'连接已断开',unknown:'状态未知'};
+ /** Recover polling after timeout, focus changes and suspension without replaying stale data. */
+function pollConnectionStatus({onData,onError,document:doc=globalThis.document,window:win=globalThis.window,fetch:request=globalThis.fetch,intervalMs=5000,timeoutMs=4000}) {
+ let stopped=false,generation=0,timer,active;
+ const cancel=()=>{generation++;clearTimeout(timer);if(active){clearTimeout(active.timeout);active.reject(new Error('Connection status request superseded'));active.controller.abort();active=null;}};
+ const refresh=()=>{
+  if(stopped)return;
+  cancel();
+  if(doc.visibilityState==='hidden'){timer=setTimeout(refresh,intervalMs);return;}
+  const token=generation,controller=new AbortController();let timeout,reject;
+  const expired=new Promise((_,fail)=>{reject=fail;timeout=setTimeout(()=>{controller.abort();fail(new Error('Connection status request timed out'));},timeoutMs);});
+  active={controller,timeout,reject};
+  const response=Promise.resolve().then(async()=>{
+   controller.signal.throwIfAborted();
+   const res=await request('/plugins/ssh-workspace/status',{signal:controller.signal,cache:'no-store'});
+   const data=await res.json();if(!res.ok||!data.ok)throw new Error('Connection status unavailable');return data;
+  });
+  void Promise.race([response,expired]).then(data=>{if(!stopped&&token===generation)onData(data);},error=>{if(!stopped&&token===generation)onError(error);}).finally(()=>{
+   clearTimeout(timeout);
+   if(!stopped&&token===generation){active=null;timer=setTimeout(refresh,intervalMs);}
+  });
+ };
+ doc.addEventListener('visibilitychange',refresh);win.addEventListener('focus',refresh);win.addEventListener('pageshow',refresh);
+ refresh();
+ return()=>{stopped=true;cancel();doc.removeEventListener('visibilitychange',refresh);win.removeEventListener('focus',refresh);win.removeEventListener('pageshow',refresh);};
+}
+
+ const STATUS_LABELS={idle:'未连接',connecting:'连接中',connected:'已连接',disconnected:'连接已断开',unknown:'状态未知'};
  const STATUS_STYLE='.dsh-ssh-folder-status-anchor{position:relative;overflow:visible!important}.dsh-ssh-connection-dot{position:absolute;right:-2px;top:1px;width:7px;height:7px;border-radius:50%;box-shadow:0 0 0 1.5px var(--dsw-alias-bg-layer-1,#fff);background:#969eab;pointer-events:none}.dsh-ssh-connection-dot[data-state=connected]{background:#21936a}.dsh-ssh-connection-dot[data-state=connecting]{background:#c58c2e}.dsh-ssh-connection-dot[data-state=disconnected]{background:#d64d4d}';
  const normalizedPath=value=>{const path=String(value||'').replaceAll('\\','/').replace(/\/+$/,'');return /^[a-z]:\//i.test(path)?path.toLowerCase():path;};
  function ConnectionBadges({useWorkspaces}){
   const workspaces=useWorkspaces(state=>state.items),[status,setStatus]=R.useState({servers:[],workspaces:[]});
-  R.useEffect(()=>{
-   const abort=new AbortController();let timer;
-   const update=async()=>{
-    if(document.visibilityState==='hidden')return;
-    try{const response=await fetch('/plugins/ssh-workspace/status',{signal:abort.signal});const data=await response.json();if(!response.ok||!data.ok)throw new Error('Status unavailable');if(!abort.signal.aborted)setStatus(data);}
-    catch{if(!abort.signal.aborted)setStatus(value=>({...value,servers:value.servers.map(server=>({...server,state:'unknown'}))}));}
-    finally{if(!abort.signal.aborted)timer=setTimeout(update,5000);}
-   };
-   const visibility=()=>{clearTimeout(timer);if(document.visibilityState!=='hidden')void update();};
-   document.addEventListener('visibilitychange',visibility);void update();
-   return()=>{abort.abort();clearTimeout(timer);document.removeEventListener('visibilitychange',visibility);};
-  },[]);
+  R.useEffect(()=>pollConnectionStatus({onData:setStatus,onError:()=>setStatus(value=>({...value,servers:value.servers.map(server=>({...server,state:'unknown'}))}))}),[]);
   R.useEffect(()=>{
    const servers=new Map(status.servers.map(server=>[server.id,server]));
    const routes=new Map(status.workspaces.map(workspace=>[normalizedPath(workspace.aliasPath),workspace]));
