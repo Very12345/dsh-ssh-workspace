@@ -1,5 +1,5 @@
 // DeepSeek DSH ui-directory-picker-browse 0.2.0-rc.2 (MIT). See DIRECTORY-BROWSER-LICENSE.
-// Stock component/styles; adds headerExtra and a private CSS tag ID.
+// Stock component/styles; adds title-adjacent header content, a message and a private CSS tag ID.
 function createDirectoryBrowser(require){
 		var module = { exports: {} };
 		var exports = module.exports;
@@ -280,7 +280,7 @@ function createDirectoryBrowser(require){
 		* @param props - owner-controlled browser props.
 		* @returns the dialog element (null while closed, via Modal).
 		*/
-		function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen, onClose, busy, t, headerExtra }) {
+		function DirectoryBrowser({ open, listDirectory, createDirectory, onOpen, onClose, busy, t, headerExtra, headerMessage }) {
 			const [parent, setParent] = (0, react.useState)(null);
 			const [selected, setSelected] = (0, react.useState)(null);
 			const [child, setChild] = (0, react.useState)(null);
@@ -701,10 +701,10 @@ function createDirectoryBrowser(require){
 					children: [
 						(0, react_jsx_runtime.jsxs)("div", {
 							className: DirectoryBrowser_module_css_default.header,
-							children: [headerExtra, (0, react_jsx_runtime.jsx)("h2", {
+							children: [(0, react_jsx_runtime.jsxs)("div", { className: "ssh-picker-heading", children: [(0, react_jsx_runtime.jsx)("h2", {
 								className: DirectoryBrowser_module_css_default.title,
 								children: t("browser.title")
-							}), (0, react_jsx_runtime.jsx)("div", {
+							}), headerExtra] }), headerMessage, (0, react_jsx_runtime.jsx)("div", {
 								className: DirectoryBrowser_module_css_default.crumbBar,
 								children: pathDraft === null ? (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)("span", {
 									className: DirectoryBrowser_module_css_default.crumbTrail,
