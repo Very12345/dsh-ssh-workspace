@@ -1,3 +1,4 @@
+import {openAgentHost,cachedAgentHostsCommand} from '../agent-host-startup.js';
 // Derived from Yan-Zero/dsh-remote-ssh 21d727cbe24fbae283196e5101adb3de2bdd9157 (Apache-2.0).
 // See PROVIDER-LICENSE and NOTICE. Maintained snapshot for DSH SSH Workspace.
 
@@ -70,9 +71,7 @@ function buildRemoteAgentHostCommand(remoteCodeCommand) {
     'exec "$dsh_code" agent host --host 127.0.0.1 --port 0 --idle-timeout 60 --server-data-dir "$HOME/.dsh-ssh-workspace/server" --cli-data-dir "$HOME/.dsh-ssh-workspace/cli" --verbose'
   ].join("\n");
 }
-function buildListEmbeddedAgentHostsCommand() {
-  return `find "$HOME/.vscode-server/cli/servers" -type f -path '*/server/bin/code-server' -perm -u+x -printf '%T@ %p\\n' 2>/dev/null | sort -nr | cut -d ' ' -f 2-`;
-}
+function buildListEmbeddedAgentHostsCommand() { return cachedAgentHostsCommand(); }
 function buildEmbeddedAgentHostCommand(codeServerPath, instanceId = "default") {
   if (!/^[a-zA-Z0-9._-]+$/.test(instanceId)) throw new Error(`invalid embedded Agent Host instance id: ${instanceId}`);
   const resolveCodeServer = codeServerPath === void 0 ? `dsh_code_server=$(${buildListEmbeddedAgentHostsCommand()} | head -n 1)` : `dsh_code_server=${quotePosix(codeServerPath)}`;
@@ -257,55 +256,7 @@ var RemoteSshRuntime = class extends Service {
     }
   }
   async openOverSsh() {
-    const diagnostics = [];
-    const startupCommand = buildRemoteAgentHostCommand(this.config.remoteCodeCommand);
-    let startup;
-    try {
-      startup = await runCaptured(
-        this.config.sshExecutable,
-        [...this.config.sshArgs, "-T", this.config.sshTarget, startupCommand],
-        this.config.startupTimeoutMs
-      );
-    } catch (error) {
-      if (this.config.remoteCodeCommand !== "code") throw error;
-      diagnostics.push(`standalone CLI: ${errorMessage(error)}`);
-      startup = { exitCode: null, stdout: "", stderr: "" };
-    }
-    const clean = stripAnsi(`${startup.stdout}
-${startup.stderr}`);
-    const endpoint = /ws:\/\/(?:localhost|127\.0\.0\.1):(\d+)\?tkn=([^\s]+)/.exec(clean);
-    if (endpoint?.[1] !== void 0 && endpoint[2] !== void 0) {
-      try {
-        const url = await this.openTunnel(Number(endpoint[1]), endpoint[2]);
-        return await this.connectEndpoint(url);
-      } catch (error) {
-        this.resetSshAttempt();
-        diagnostics.push(`standalone CLI: ${connectionDiagnostic(error, this.config.protocolVersions)}`);
-        if (this.config.remoteCodeCommand !== "code") {
-          throw new Error(`dsh-remote-ssh: configured VS Code Agent Host failed
-${diagnostics.at(-1)}`, { cause: error });
-        }
-      }
-    } else if (clean.trim().length > 0) {
-      diagnostics.push(`standalone CLI (ssh exit ${startup.exitCode ?? "unknown"}): ${tailDiagnostic(clean)}`);
-    }
-    if (this.config.remoteCodeCommand !== "code") {
-      throw new Error(`dsh-remote-ssh: remote VS Code Agent Host failed to start (ssh exit ${startup.exitCode})
-${clean}`);
-    }
-    const candidates = await this.listEmbeddedAgentHosts();
-    for (const [index, codeServerPath] of candidates.entries()) {
-      try {
-        const url = await this.startEmbeddedAgentHost(codeServerPath, index);
-        return await this.connectEndpoint(url);
-      } catch (error) {
-        this.resetSshAttempt();
-        diagnostics.push(`embedded ${codeServerPath}: ${connectionDiagnostic(error, this.config.protocolVersions)}`);
-      }
-    }
-    if (candidates.length === 0) diagnostics.push("embedded VS Code Server: no installed code-server found");
-    throw new Error(`dsh-remote-ssh: no compatible VS Code Agent Host found
-${diagnostics.join("\n")}`);
+    return openAgentHost(this,{runCaptured,buildRemoteAgentHostCommand,stripAnsi,tailDiagnostic,connectionDiagnostic});
   }
   async listEmbeddedAgentHosts() {
     const result = await runCaptured(
