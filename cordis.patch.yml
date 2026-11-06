@@ -4,19 +4,19 @@
       group: true
       isolate: { fs: true, subprocess: true, spillStore: true, shell: true }
       config:
-        - id: subprocess
+        - id: ssh-local-subprocess
           name: '@deepseek-ai/dsh-subprocess-local'
-        - id: fs
+        - id: ssh-local-fs
           name: '@deepseek-ai/dsh-fs-sandbox'
-        - id: spill
+        - id: ssh-local-spill
           name: '@deepseek-ai/dsh-spill-local'
-        - id: bash
+        - id: ssh-local-bash
           name: '@deepseek-ai/dsh-bash-sandbox'
           disabled: !!js process.platform === 'win32'
-        - id: pwsh
+        - id: ssh-local-pwsh
           name: '@deepseek-ai/dsh-pwsh-sandbox'
           disabled: !!js process.platform !== 'win32'
-        - id: local-bridge
+        - id: ssh-local-bridge
           name: '@very12345/dsh-ssh-workspace/bridge'
     - id: ssh-workspace-manager
       name: '@very12345/dsh-ssh-workspace/provider/manager'

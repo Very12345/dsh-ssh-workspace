@@ -52,6 +52,12 @@ SSH config 使用系统 OpenSSH 解释连接选项，包含 `Host`、`Include`�
 
 从 0.1.11 起，连接优先复用插件目录中已验证的 VS Code Server 1.140.0 缓存，再尝试已有的其他兼容缓存；只有缓存不可用时才进入在线 CLI 启动，单次最多等待 45 秒。自定义 CLI 路径仍优先使用用户配置。普通 SSH 登录成功并不代表 Agent Host 就绪：远端 DNS 或微软下载站不可用也会阻止新环境启动，但不应阻止兼容缓存的使用。不会修改系统 DNS、关闭主机密钥校验或中断其他 SSH 会话。
 
+## 0.1.12 模型切换与配置热重载
+
+旧版内部本机服务节点复用了宿主的 subprocess、fs 等 ID。DSH 0.2.2-rc.1 重载模型或设置后，重复 ID 可能使本机执行服务丢失，目录、终端和 sessionController 随之等待依赖，出现 gateway/service-unavailable。0.1.12 将内部节点全部改为 SSH 插件专属 ID，保留原有服务隔离、沙箱和远端路由。
+
+使用当前官方宿主做了隔离对比：官方基础、官方加 Our Free Model 均正常；旧版 SSH 单独或配合 Our Free Model 会复现；修复版组合均通过。回归脚本 test/hmr-smoke.mjs 在临时 profile 中连续切换模型四次，检查会话、文件和终端相关服务，没有发送模型请求。设置 DSH_TEST_EXECUTABLE、DSH_TEST_CLI 后可运行 npm run smoke:hmr；桌面包测试还需 DSH_TEST_EXPOSE_INTERNALS=1。可用 DSH_TEST_EXTRA_BUNDLE 和 DSH_TEST_EXTRA_BUNDLE_DIR 加载待验证的模型提供商。
+
 ## 开发与验证
 
 这是独立仓库，不属于父目录 npm workspace。
